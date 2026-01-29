@@ -21,7 +21,8 @@ let pauseText = null;
 // TODO: set arwingCollisionBox to true to enable collision detection
 let arwingCollisionBox = false;
 
-document.body.appendChild(app.view);
+const _gameContainer = document.getElementById('game-container') || document.body;
+_gameContainer.appendChild(app.view);
 
 // background Music
 const backgrundMusic = new Audio('assets/sounds/background-music.mp3');
