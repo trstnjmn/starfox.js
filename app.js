@@ -200,33 +200,66 @@ function startGameAudio() {
 
 function maybePlayMenuMusic() {
     if (muted || !showStart || musicMenuOpen) return;
+    if (!menuMusicUnlocked) {
+        attemptUnlockMenuMusic();
+        return;
+    }
     fadeInMusic('menu');
 }
 
+let menuMusicUnlocked = false;
+let lastMenuAttempt = 0;
+const MENU_ACTIVATION_EVENTS = ['pointerdown', 'mousedown', 'pointerup', 'mouseup', 'click', 'keydown', 'keyup', 'touchend', 'touchstart'];
+
 function startMenuMusicNow() {
     if (muted || !showStart || musicMenuOpen) return;
+    const el = menuTrack.el;
     menuTrack.target = menuTrack.base;
     menuTrack.vol = menuTrack.base;
-    menuTrack.el.muted = false;
-    menuTrack.el.volume = menuTrack.base;
-    if (menuTrack.el.paused) {
-        menuTrack.el.play().catch(() => {
-            menuTrack.el.muted = true;
-            menuTrack.el.volume = 1;
-            menuTrack.el.play().catch(() => { });
-        });
-    }
+    el.muted = false;
+    el.volume = menuTrack.base;
+    el.play().then(() => {
+        menuMusicUnlocked = true;
+        startMusicHint.visible = false;
+        removeMenuUnlockListeners();
+    }).catch(() => {
+        el.muted = true;
+        el.volume = 1;
+        el.play().catch(() => { });
+    });
 }
 
-const MENU_UNLOCK_EVENTS = ['pointerdown', 'pointerup', 'click', 'keydown', 'touchend', 'touchstart', 'mouseup', 'wheel', 'mousemove', 'pointermove'];
+const MENU_UNLOCK_EVENTS = ['pointerdown', 'mousedown', 'pointerup', 'mouseup', 'click', 'keydown', 'keyup', 'touchend', 'touchstart', 'wheel', 'mousemove', 'pointermove'];
 
-function unlockMenuMusic() {
-    for (const ev of MENU_UNLOCK_EVENTS) document.removeEventListener(ev, unlockMenuMusic);
+function removeMenuUnlockListeners() {
+    for (const ev of MENU_UNLOCK_EVENTS) document.removeEventListener(ev, attemptUnlockMenuMusic);
+}
+
+function attemptUnlockMenuMusic(e) {
+    if (menuMusicUnlocked) {
+        removeMenuUnlockListeners();
+        return;
+    }
     if (muted || !showStart || musicMenuOpen) return;
+    const isActivation = e && MENU_ACTIVATION_EVENTS.indexOf(e.type) !== -1;
+    const now = performance.now();
+    if (!isActivation && now - lastMenuAttempt < 250) return;
+    lastMenuAttempt = now;
+    const el = menuTrack.el;
     menuTrack.target = menuTrack.base;
-    menuTrack.el.muted = false;
-    menuTrack.el.volume = menuTrack.base;
-    if (menuTrack.el.paused) menuTrack.el.play().catch(() => { });
+    menuTrack.vol = menuTrack.base;
+    el.pause();
+    el.muted = false;
+    el.volume = menuTrack.base;
+    el.play().then(() => {
+        menuMusicUnlocked = true;
+        startMusicHint.visible = false;
+        removeMenuUnlockListeners();
+    }).catch(() => {
+        el.muted = true;
+        el.volume = 1;
+        el.play().catch(() => { });
+    });
 }
 
 function playMusicPreview(id) {
@@ -377,7 +410,12 @@ const startScore = new PIXI.Text('', {
     fontFamily: 'courier new', fontSize: 22, fill: 0xffcc00, fontWeight: 'bold', align: 'center', lineHeight: 28
 });
 startScore.anchor.set(0.5);
-startContainer.addChild(startTitle, startSubtitle, startMouseBtn, startKeyBtn, startButton, startMusicBtn, startHint, startScore);
+const startMusicHint = new PIXI.Text('Klick oder Taste drücken, um die Musik zu starten', {
+    fontFamily: 'courier new', fontSize: 20, fill: 0xffe066, fontWeight: 'bold'
+});
+startMusicHint.anchor.set(0.5);
+startMusicHint.visible = false;
+startContainer.addChild(startTitle, startSubtitle, startMouseBtn, startKeyBtn, startButton, startMusicBtn, startHint, startScore, startMusicHint);
 uiLayer.addChild(startContainer);
 
 const musicContainer = new PIXI.Container();
@@ -1575,6 +1613,8 @@ function layoutUI() {
     startMusicBtn.y = h * 0.64;
     startHint.x = cx;
     startHint.y = h * 0.72;
+    startMusicHint.x = cx;
+    startMusicHint.y = h * 0.80;
     startScore.x = cx;
     startScore.y = h * 0.875;
 
@@ -1717,4 +1757,4 @@ updateMusicMenuState();
 refreshHudVisibility();
 layoutUI();
 startMenuMusicNow();
-for (const ev of MENU_UNLOCK_EVENTS) document.addEventListener(ev, unlockMenuMusic, { once: true });
+for (const ev of MENU_UNLOCK_EVENTS) document.addEventListener(ev, attemptUnlockMenuMusic);
