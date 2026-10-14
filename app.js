@@ -14,8 +14,21 @@ app.stage.addChild(starLayer, gameLayer, uiLayer);
 
 const MARGIN = 26;
 const FALL_FACTOR = 0.06;
-const MAX_LIVES = 5;
 const ASSET_SCALE = 1.25;
+
+const DIFFICULTIES = [
+    { name: 'Sehr leicht', spawnMs: 1600, maxLives: 8 },
+    { name: 'Leicht', spawnMs: 1400, maxLives: 7 },
+    { name: 'Normal', spawnMs: 1200, maxLives: 6 },
+    { name: 'Schwer', spawnMs: 1000, maxLives: 5 },
+    { name: 'Extrem', spawnMs: 800, maxLives: 4 }
+];
+let difficulty = 4;
+try {
+    const d = parseInt(localStorage.getItem('starfox_difficulty') || '4', 10);
+    if (d >= 1 && d <= 5) difficulty = d;
+} catch (e) { }
+let maxLives = 5;
 const HUD_FONT = { fontFamily: 'courier new', fontSize: 22, fill: 0xffffff, fontWeight: 'bold' };
 
 const ENEMY_KINDS = ['ship1', 'ship2', 'rock', 'satellite', 'bork'];
@@ -41,7 +54,11 @@ let showStart = true;
 let controlMode = null;
 try { controlMode = localStorage.getItem('starfox_control'); } catch (e) { controlMode = null; }
 
-let scores = loadScores();
+let savedName = '';
+try { savedName = (localStorage.getItem('starfox_name') || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 5); } catch (e) { }
+
+let boards = loadBoards();
+let awaitingName = false;
 
 let mouseX = app.screen.width / 2;
 let mouseY = app.screen.height / 2;
@@ -56,6 +73,7 @@ let shieldActive = false;
 let spawnAccum = 0;
 let diffAccum = 0;
 let fireCooldown = 0;
+let fireBlocked = false;
 let powerupTimer = 6000;
 
 let shakeTime = 0;
@@ -68,10 +86,184 @@ const enemyLasers = [];
 const powerupList = [];
 const stars = [];
 
-const backgroundMusic = new Audio('assets/sounds/background-music.mp3');
-backgroundMusic.loop = true;
-backgroundMusic.play().catch(() => { });
-document.addEventListener('pointerdown', () => { if (!muted) backgroundMusic.play().catch(() => { }); }, { once: true });
+const gameStartSound = new Audio('assets/sounds/game_start.mp3');
+gameStartSound.volume = 0.7;
+
+const MUSIC_DIR = 'assets/sounds/music/';
+const GAME_MUSIC_FILES = ['music_1.mp3', 'music_2.mp3', 'music_3.mp3', 'music_4.mp3', 'music_5.mp3'];
+const MUSIC_BASE_VOLUME = 0.65;
+const MUSIC_FADE_MS = 900;
+
+const menuMusic = new Audio(MUSIC_DIR + 'menu_music.mp3');
+menuMusic.loop = true;
+
+const gameMusicTracks = GAME_MUSIC_FILES.map((file, i) => {
+    const el = new Audio(MUSIC_DIR + file);
+    el.loop = false;
+    return { id: 'g' + i, label: 'Musik ' + (i + 1), el, base: MUSIC_BASE_VOLUME, vol: 0, target: 0 };
+});
+
+const menuTrack = { id: 'menu', label: 'Menü Musik', el: menuMusic, base: MUSIC_BASE_VOLUME, vol: 0, target: 0 };
+
+const musicTracks = [...gameMusicTracks, menuTrack];
+
+let musicStarted = false;
+let musicMenuOpen = false;
+let musicPreviewId = null;
+let gamePlayIndex = 0;
+
+function trackById(id) {
+    return musicTracks.find(t => t.id === id);
+}
+
+function fadeInMusic(id) {
+    const chosen = trackById(id);
+    if (!chosen) return;
+    for (const t of musicTracks) t.target = (t === chosen) ? t.base : 0;
+    if (chosen.el.paused) {
+        chosen.el.volume = chosen.vol;
+        chosen.el.play().catch(() => { });
+    }
+}
+
+function pauseAllMusic() {
+    for (const t of musicTracks) {
+        t.target = 0;
+        t.vol = 0;
+        t.el.volume = 0;
+        if (!t.el.paused) t.el.pause();
+    }
+}
+
+function advanceGameMusic() {
+    gamePlayIndex = (gamePlayIndex + 1) % gameMusicTracks.length;
+    const t = gameMusicTracks[gamePlayIndex];
+    t.el.loop = false;
+    fadeInMusic(t.id);
+}
+
+function updateMusicFades(dt) {
+    for (const t of musicTracks) {
+        if (t.vol === t.target) continue;
+        const step = (t.base / MUSIC_FADE_MS) * dt;
+        if (t.vol < t.target) t.vol = Math.min(t.target, t.vol + step);
+        else t.vol = Math.max(t.target, t.vol - step);
+        t.el.volume = t.vol;
+        if (t.target === 0 && t.vol <= 0.002 && !t.el.paused) t.el.pause();
+    }
+    maybeAdvanceGameMusic();
+}
+
+function maybeAdvanceGameMusic() {
+    if (!musicStarted || musicMenuOpen || muted || gamePaused || gameOver || showStart) return;
+    if (!gameStartSound.ended && gameStartSound.currentTime > 0) return;
+    const el = gameMusicTracks[gamePlayIndex].el;
+    if (el.paused || !el.duration) return;
+    const remaining = (el.duration - el.currentTime) * 1000;
+    if (remaining <= MUSIC_FADE_MS) advanceGameMusic();
+}
+
+const MUSIC_DISC_SPIN = (Math.PI * 2) / 1800;
+
+function updateMusicDisc(dt) {
+    if (!musicMenuOpen) return;
+    const t = musicPreviewId ? trackById(musicPreviewId) : null;
+    if (t && !t.el.paused && !muted) musicDisc.rotation += MUSIC_DISC_SPIN * dt;
+}
+
+function resumeMusic() {
+    if (muted || gameOver || gamePaused || !musicStarted || musicMenuOpen) return;
+    if (!gameStartSound.ended && gameStartSound.currentTime > 0) {
+        gameStartSound.play().catch(() => { });
+        return;
+    }
+    const t = gameMusicTracks[gamePlayIndex];
+    t.el.loop = false;
+    fadeInMusic(t.id);
+}
+
+function startGameMusic() {
+    if (musicStarted) return;
+    musicStarted = true;
+    gamePlayIndex = random(0, gameMusicTracks.length - 1);
+    resumeMusic();
+}
+
+function startGameAudio() {
+    pauseAllMusic();
+    musicStarted = false;
+    if (muted) return;
+    gameStartSound.currentTime = 0;
+    gameStartSound.onended = resumeMusic;
+    gameStartSound.play().catch(() => { });
+}
+
+function maybePlayMenuMusic() {
+    if (muted || !showStart || musicMenuOpen) return;
+    fadeInMusic('menu');
+}
+
+function startMenuMusicNow() {
+    if (muted || !showStart || musicMenuOpen) return;
+    menuTrack.target = menuTrack.base;
+    menuTrack.vol = menuTrack.base;
+    menuTrack.el.muted = false;
+    menuTrack.el.volume = menuTrack.base;
+    if (menuTrack.el.paused) {
+        menuTrack.el.play().catch(() => {
+            menuTrack.el.muted = true;
+            menuTrack.el.volume = 1;
+            menuTrack.el.play().catch(() => { });
+        });
+    }
+}
+
+const MENU_UNLOCK_EVENTS = ['pointerdown', 'pointerup', 'click', 'keydown', 'touchend', 'touchstart', 'mouseup', 'wheel', 'mousemove', 'pointermove'];
+
+function unlockMenuMusic() {
+    for (const ev of MENU_UNLOCK_EVENTS) document.removeEventListener(ev, unlockMenuMusic);
+    if (muted || !showStart || musicMenuOpen) return;
+    menuTrack.target = menuTrack.base;
+    menuTrack.el.muted = false;
+    menuTrack.el.volume = menuTrack.base;
+    if (menuTrack.el.paused) menuTrack.el.play().catch(() => { });
+}
+
+function playMusicPreview(id) {
+    musicPreviewId = id;
+    const t = trackById(id);
+    if (t && t !== menuTrack) t.el.loop = true;
+    if (!muted) fadeInMusic(id);
+    updateMusicMenuState();
+}
+
+function stopMusicPreview() {
+    pauseAllMusic();
+    musicPreviewId = null;
+    updateMusicMenuState();
+}
+
+function resumeMusicPreview() {
+    if (muted || !musicPreviewId) return;
+    fadeInMusic(musicPreviewId);
+}
+
+function resumeAudio() {
+    if (muted) return;
+    if (musicMenuOpen) {
+        resumeMusicPreview();
+        return;
+    }
+    if (showStart) {
+        maybePlayMenuMusic();
+        return;
+    }
+    resumeMusic();
+}
+
+function playConfirm() {
+    playSound('assets/sounds/ui_confirm.mp3', 0.6);
+}
 
 const warningSound = new Audio('assets/sounds/warning.mp3');
 warningSound.loop = true;
@@ -173,18 +365,43 @@ const startSubtitle = new PIXI.Text('Steuerung wählen', {
     fontFamily: 'courier new', fontSize: 28, fill: 0x66ccff, fontWeight: 'bold'
 });
 startSubtitle.anchor.set(0.5);
-const startMouseBtn = makeButton('Maus', 0xffffff, () => { chooseControl('mouse'); startGame(); });
-const startKeyBtn = makeButton('Tastatur', 0xffffff, () => { chooseControl('keyboard'); startGame(); });
+const startMouseBtn = makeButton('Maus', 0xffffff, () => chooseControl('mouse'));
+const startKeyBtn = makeButton('Tastatur', 0xffffff, () => chooseControl('keyboard'));
+const startButton = makeBigButton('START', 0x66ff99, () => startGame());
+const startMusicBtn = makeButton('Musik', 0x66ccff, () => openMusicMenu());
 const startHint = new PIXI.Text('Tastatur: Pfeiltasten/WASD · Leertaste feuert · Maus: Zeigen + Klick', {
     fontFamily: 'courier new', fontSize: 18, fill: 0xbbbbbb
 });
 startHint.anchor.set(0.5);
 const startScore = new PIXI.Text('', {
-    fontFamily: 'courier new', fontSize: 22, fill: 0xffcc00, fontWeight: 'bold', align: 'center'
+    fontFamily: 'courier new', fontSize: 22, fill: 0xffcc00, fontWeight: 'bold', align: 'center', lineHeight: 28
 });
 startScore.anchor.set(0.5);
-startContainer.addChild(startTitle, startSubtitle, startMouseBtn, startKeyBtn, startHint, startScore);
+startContainer.addChild(startTitle, startSubtitle, startMouseBtn, startKeyBtn, startButton, startMusicBtn, startHint, startScore);
 uiLayer.addChild(startContainer);
+
+const musicContainer = new PIXI.Container();
+const musicTitle = new PIXI.Text('MUSIK', {
+    fontFamily: 'courier new', fontSize: 54, fill: 0xffffff, fontWeight: 'bold'
+});
+musicTitle.anchor.set(0.5);
+const musicSubtitle = new PIXI.Text('Titel anhören', {
+    fontFamily: 'courier new', fontSize: 26, fill: 0x66ccff, fontWeight: 'bold'
+});
+musicSubtitle.anchor.set(0.5);
+const musicButtons = musicTracks.map(t => {
+    const btn = makeButton(t.label, 0xffffff, () => playMusicPreview(t.id));
+    return { id: t.id, btn };
+});
+const musicStopBtn = makeButton('Stopp', 0xff6666, () => stopMusicPreview());
+const musicBackBtn = makeButton('Zurück', 0xffffff, () => closeMusicMenu());
+const musicBackHint = new PIXI.Text('Titel läuft in Schleife · Stopp beendet die Wiedergabe', {
+    fontFamily: 'courier new', fontSize: 18, fill: 0xbbbbbb
+});
+musicBackHint.anchor.set(0.5);
+musicContainer.addChild(musicTitle, musicSubtitle, musicStopBtn, musicBackBtn, musicBackHint, ...musicButtons.map(e => e.btn));
+musicContainer.visible = false;
+uiLayer.addChild(musicContainer);
 
 const pauseContainer = new PIXI.Container();
 const pauseTitle = new PIXI.Text('Pause', {
@@ -198,13 +415,20 @@ pauseControlLabel.anchor.set(0.5);
 const pauseMouseBtn = makeButton('Maus', 0xffffff, () => chooseControl('mouse'));
 const pauseKeyBtn = makeButton('Tastatur', 0xffffff, () => chooseControl('keyboard'));
 const pauseResumeBtn = makeButton('Weiter', 0x66ff99, () => setPaused(false));
+const pauseRestartBtn = makeButton('Neustart', 0xffcc66, () => restartGame());
+const pauseMenuBtn = makeButton('Hauptmenü', 0xff9999, () => goToMainMenu());
 const pauseHint = new PIXI.Text('P / Escape = Weiter', {
     fontFamily: 'courier new', fontSize: 18, fill: 0xbbbbbb
 });
 pauseHint.anchor.set(0.5);
-pauseContainer.addChild(pauseTitle, pauseControlLabel, pauseMouseBtn, pauseKeyBtn, pauseResumeBtn, pauseHint);
+pauseContainer.addChild(pauseTitle, pauseControlLabel, pauseMouseBtn, pauseKeyBtn, pauseResumeBtn, pauseRestartBtn, pauseMenuBtn, pauseHint);
 pauseContainer.visible = false;
 uiLayer.addChild(pauseContainer);
+
+const startDiffRow = buildDifficultyRow();
+const pauseDiffRow = buildDifficultyRow();
+startContainer.addChild(startDiffRow);
+pauseContainer.addChild(pauseDiffRow);
 
 const MENU_LOGO_BASE = 1080;
 
@@ -221,6 +445,28 @@ const startLogoBg = makeMenuLogoBg();
 const pauseLogoBg = makeMenuLogoBg();
 startContainer.addChildAt(startLogoBg, 0);
 pauseContainer.addChildAt(pauseLogoBg, 0);
+
+const MUSIC_DISC_BASE = 300;
+const musicDisc = new PIXI.Container();
+const discGfx = new PIXI.Graphics();
+discGfx.beginFill(0x0c0c16, 0.92);
+discGfx.lineStyle(6, 0x2a2a3a, 1);
+discGfx.drawCircle(0, 0, MUSIC_DISC_BASE / 2);
+discGfx.lineStyle(2, 0x33334a, 1);
+discGfx.drawCircle(0, 0, MUSIC_DISC_BASE * 0.34);
+discGfx.endFill();
+const discShip = PIXI.Sprite.from('assets/arwing.png');
+discShip.anchor.set(0.5);
+discShip.scale.set((MUSIC_DISC_BASE * 0.5) / 1080);
+if (!discShip.texture.baseTexture.valid) {
+    discShip.texture.baseTexture.once('loaded', () => {
+        discShip.scale.set((MUSIC_DISC_BASE * 0.5) / (discShip.texture.width || 1080));
+        layoutUI();
+    });
+}
+musicDisc.addChild(discGfx, discShip);
+musicDisc.alpha = 0.9;
+musicContainer.addChildAt(musicDisc, 0);
 
 const gameOverText = new PIXI.Text('Game Over', {
     fontFamily: 'courier new', fontSize: 82, fill: 0xffffff, fontWeight: 'bold'
@@ -242,8 +488,18 @@ restartButton.on('pointerdown', restartGame);
 restartButton.on('pointerover', () => restartButton.style.fill = 0xffffff);
 restartButton.on('pointerout', () => restartButton.style.fill = 0x66ff99);
 
+const menuButton = new PIXI.Text('Hauptmenü', {
+    fontFamily: 'courier new', fontSize: 34, fill: 0xff9999, fontWeight: 'bold'
+});
+menuButton.anchor.set(0.5);
+menuButton.eventMode = 'static';
+menuButton.cursor = 'pointer';
+menuButton.on('pointerdown', () => goToMainMenu());
+menuButton.on('pointerover', () => menuButton.style.fill = 0xffffff);
+menuButton.on('pointerout', () => menuButton.style.fill = 0xff9999);
+
 const overScoreText = new PIXI.Text('', {
-    fontFamily: 'courier new', fontSize: 20, fill: 0xffffff, align: 'center'
+    fontFamily: 'courier new', fontSize: 20, fill: 0xffffff, align: 'center', lineHeight: 28
 });
 overScoreText.anchor.set(0.5);
 
@@ -257,6 +513,7 @@ document.addEventListener('mousedown', (e) => { if (e.button === 0) mousePressed
 document.addEventListener('mouseup', (e) => { if (e.button === 0) mousePressed = false; });
 
 document.addEventListener('keydown', (e) => {
+    if (awaitingName) return;
     if (e.key === 'p' || e.key === 'P' || e.key === 'Escape') togglePause();
     if (e.key === 'm' || e.key === 'M') toggleMute();
     if ((e.key === 'r' || e.key === 'R') && gameOver) restartGame();
@@ -316,6 +573,35 @@ function makeButton(label, color, onClick) {
     return b;
 }
 
+function makeBigButton(label, color, onClick) {
+    const c = new PIXI.Container();
+    const w = 340;
+    const h = 82;
+    const g = new PIXI.Graphics();
+    const t = new PIXI.Text(label, {
+        fontFamily: 'courier new', fontSize: 46, fill: color, fontWeight: 'bold', letterSpacing: 6
+    });
+    t.anchor.set(0.5);
+
+    const paint = (hover) => {
+        g.clear();
+        g.lineStyle(4, hover ? 0xffffff : color, 1);
+        g.beginFill(hover ? 0x14202c : 0x0a0f16, 0.92);
+        g.drawRect(-w / 2, -h / 2, w, h);
+        g.endFill();
+        t.style.fill = hover ? 0xffffff : color;
+    };
+
+    c.addChild(g, t);
+    c.eventMode = 'static';
+    c.cursor = 'pointer';
+    c.on('pointerover', () => paint(true));
+    c.on('pointerout', () => paint(false));
+    c.on('pointerdown', onClick);
+    paint(false);
+    return c;
+}
+
 function setButtonState(btn, selected) {
     btn._base = selected ? 0x66ff99 : 0xffffff;
     btn.style.fill = btn._base;
@@ -333,25 +619,216 @@ function chooseControl(mode) {
     controlMode = mode;
     try { localStorage.setItem('starfox_control', mode); } catch (e) { }
     updateControlButtons();
+    playConfirm();
 }
 
-function loadScores() {
+function updateMusicMenuState() {
+    for (const entry of musicButtons) {
+        const active = musicPreviewId === entry.id;
+        entry.btn._base = active ? 0x66ff99 : 0xffffff;
+        entry.btn.style.fill = entry.btn._base;
+    }
+}
+
+function openMusicMenu() {
+    musicMenuOpen = true;
+    startContainer.visible = false;
+    musicContainer.visible = true;
+    musicPreviewId = 'menu';
+    if (!muted) fadeInMusic('menu');
+    updateMusicMenuState();
+    playConfirm();
+    layoutUI();
+}
+
+function closeMusicMenu() {
+    musicPreviewId = null;
+    musicMenuOpen = false;
+    musicContainer.visible = false;
+    startContainer.visible = true;
+    maybePlayMenuMusic();
+    updateMusicMenuState();
+    playConfirm();
+    layoutUI();
+}
+
+function currentDifficulty() {
+    return DIFFICULTIES[Math.max(1, Math.min(5, difficulty)) - 1];
+}
+
+function buildDifficultyRow() {
+    const c = new PIXI.Container();
+    const arrowFont = { fontFamily: 'courier new', fontSize: 34, fill: 0xffffff, fontWeight: 'bold' };
+
+    const left = new PIXI.Text('◀', arrowFont);
+    left.anchor.set(0.5);
+    left.eventMode = 'static';
+    left.cursor = 'pointer';
+    left.on('pointerover', () => { if (difficulty > 1) left.style.fill = 0x66ff99; });
+    left.on('pointerout', () => left.style.fill = 0xffffff);
+    left.on('pointerdown', () => changeDifficulty(-1));
+
+    const right = new PIXI.Text('▶', arrowFont);
+    right.anchor.set(0.5);
+    right.eventMode = 'static';
+    right.cursor = 'pointer';
+    right.on('pointerover', () => { if (difficulty < 5) right.style.fill = 0x66ff99; });
+    right.on('pointerout', () => right.style.fill = 0xffffff);
+    right.on('pointerdown', () => changeDifficulty(1));
+
+    const label = new PIXI.Text('', {
+        fontFamily: 'courier new', fontSize: 26, fill: 0xffcc00, fontWeight: 'bold'
+    });
+    label.anchor.set(0.5);
+
+    const desc = new PIXI.Text('', {
+        fontFamily: 'courier new', fontSize: 16, fill: 0xbbbbbb
+    });
+    desc.anchor.set(0.5);
+
+    left.x = -180;
+    right.x = 180;
+    left.y = 0;
+    right.y = 0;
+    desc.y = 28;
+
+    c.addChild(left, right, label, desc);
+    c._left = left;
+    c._right = right;
+    c._label = label;
+    c._desc = desc;
+    return c;
+}
+
+function updateDifficultyUI() {
+    const d = currentDifficulty();
+    for (const row of [startDiffRow, pauseDiffRow]) {
+        row._label.text = 'Stufe ' + difficulty + ' · ' + d.name;
+        row._desc.text = 'Spawn: ' + d.spawnMs + ' ms · Max. Leben: ' + d.maxLives;
+        row._left.alpha = difficulty > 1 ? 1 : 0.3;
+        row._right.alpha = difficulty < 5 ? 1 : 0.3;
+    }
+}
+
+function applyDifficulty() {
+    const d = currentDifficulty();
+    maxLives = d.maxLives;
+    if (lives > maxLives) lives = maxLives;
+    gameSpeed = d.spawnMs;
+    updateDifficultyUI();
+    updateScoreboardTexts();
+    updateHud();
+}
+
+function changeDifficulty(delta) {
+    difficulty = Math.max(1, Math.min(5, difficulty + delta));
+    try { localStorage.setItem('starfox_difficulty', String(difficulty)); } catch (e) { }
+    applyDifficulty();
+    playConfirm();
+}
+
+function loadBoards() {
     try {
-        const a = JSON.parse(localStorage.getItem('starfox_scores') || '[]');
-        return Array.isArray(a) ? a.slice(0, 5) : [];
-    } catch (e) { return []; }
+        const raw = JSON.parse(localStorage.getItem('starfox_scores') || '{}');
+        if (raw && !Array.isArray(raw) && typeof raw === 'object') return raw;
+        if (Array.isArray(raw) && raw.length) {
+            const legacy = raw.slice(0, 5).map(v => ({ n: '---', s: v, d: '' }));
+            return { [difficulty]: legacy };
+        }
+    } catch (e) { }
+    return {};
 }
 
-function saveScore(n) {
-    scores.push(n);
-    scores.sort((a, b) => b - a);
-    scores.length = Math.min(scores.length, 5);
-    try { localStorage.setItem('starfox_scores', JSON.stringify(scores)); } catch (e) { }
+function boardFor(level) {
+    const list = boards[level];
+    return Array.isArray(list) ? list : [];
 }
 
-function scoreboardText() {
-    if (!scores.length) return 'Scoreboard\n– keine Einträge –';
-    return 'Scoreboard\n' + scores.map((v, i) => (i + 1) + '.  ' + v).join('\n');
+function todayStr() {
+    const dt = new Date();
+    const p = n => String(n).padStart(2, '0');
+    return p(dt.getDate()) + '.' + p(dt.getMonth() + 1) + '.' + dt.getFullYear();
+}
+
+function padName(n) {
+    return (n || '---').toString().toUpperCase().slice(0, 5).padEnd(5, ' ');
+}
+
+function saveEntry(level, name, value) {
+    const list = boardFor(level).slice();
+    list.push({ n: (name || 'AAA').toUpperCase().slice(0, 5), s: value, d: todayStr() });
+    list.sort((a, b) => b.s - a.s);
+    boards[level] = list.slice(0, 5);
+    try { localStorage.setItem('starfox_scores', JSON.stringify(boards)); } catch (e) { }
+}
+
+function scoreboardText(level) {
+    const list = boardFor(level);
+    const head = 'SCOREBOARD · STUFE ' + level;
+    if (!list.length) return head + '\n– keine Einträge –';
+    const rows = list.map((e, i) =>
+        (i + 1) + '. ' + padName(e.n) + '  ' + String(e.s).padStart(4, ' ') + '  ' + (e.d || '--.--.----'));
+    return head + '\n' + rows.join('\n');
+}
+
+function updateScoreboardTexts() {
+    startScore.text = scoreboardText(difficulty);
+}
+
+const nameEntryEl = document.createElement('div');
+nameEntryEl.id = 'name-entry';
+const neTitle = document.createElement('div');
+neTitle.className = 'ne-title';
+neTitle.textContent = 'NEW HIGHSCORE';
+const neSub = document.createElement('div');
+neSub.className = 'ne-sub';
+neSub.textContent = 'NAME EINGEBEN (MAX. 5)';
+const nameInput = document.createElement('input');
+nameInput.id = 'name-input';
+nameInput.maxLength = 5;
+nameInput.autocomplete = 'off';
+nameInput.spellcheck = false;
+const neHint = document.createElement('div');
+neHint.className = 'ne-hint';
+neHint.textContent = 'ENTER = SPEICHERN';
+nameEntryEl.append(neTitle, neSub, nameInput, neHint);
+_gameContainer.appendChild(nameEntryEl);
+
+nameInput.addEventListener('input', () => {
+    nameInput.value = nameInput.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 5);
+});
+nameInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+        e.preventDefault();
+        submitName();
+    }
+});
+
+function showNameEntry() {
+    awaitingName = true;
+    nameInput.value = savedName;
+    nameEntryEl.style.display = 'flex';
+    setTimeout(() => { nameInput.focus(); nameInput.select(); }, 30);
+}
+
+function hideNameEntry() {
+    nameEntryEl.style.display = 'none';
+}
+
+function commitName() {
+    if (!awaitingName) return;
+    awaitingName = false;
+    const name = (nameInput.value || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 5) || 'AAA';
+    savedName = name;
+    try { localStorage.setItem('starfox_name', name); } catch (e) { }
+    saveEntry(difficulty, name, score);
+    hideNameEntry();
+}
+
+function submitName() {
+    if (!awaitingName) return;
+    commitName();
+    finishGameOver();
 }
 
 function refreshHudVisibility() {
@@ -364,9 +841,14 @@ function refreshHudVisibility() {
 function startGame() {
     showStart = false;
     startContainer.visible = false;
+    musicContainer.visible = false;
+    musicMenuOpen = false;
+    musicPreviewId = null;
     gameOver = false;
     gamePaused = false;
-    if (!muted) backgroundMusic.play().catch(() => { });
+    fireBlocked = true;
+    applyDifficulty();
+    startGameAudio();
     refreshHudVisibility();
     layoutUI();
 }
@@ -403,9 +885,10 @@ function toggleMute() {
     soundButton.text = 'Sound: ' + (muted ? 'OFF' : 'ON');
     soundButton.style.fill = muted ? 0x888888 : 0xffffff;
     if (muted) {
-        backgroundMusic.pause();
-    } else if (!gameOver && !gamePaused) {
-        backgroundMusic.play().catch(() => { });
+        pauseAllMusic();
+        gameStartSound.pause();
+    } else {
+        resumeAudio();
     }
 }
 
@@ -413,12 +896,14 @@ function setPaused(paused) {
     if (gameOver || showStart) return;
     gamePaused = paused;
     if (paused) {
-        backgroundMusic.pause();
+        pauseAllMusic();
+        gameStartSound.pause();
         updateControlButtons();
         pauseContainer.visible = true;
     } else {
         pauseContainer.visible = false;
-        if (!muted) backgroundMusic.play().catch(() => { });
+        fireBlocked = true;
+        resumeAudio();
     }
     layoutUI();
 }
@@ -604,6 +1089,7 @@ function updateEnemyLasers(dt) {
 }
 
 function fireLaser() {
+    startGameMusic();
     playSound('assets/sounds/laser' + random(1, 2) + '.mp3', 0.5);
     const spread = spreadShotMs > 0;
     const angles = spread ? [-0.22, 0, 0.22] : [0];
@@ -624,6 +1110,10 @@ function fireLaser() {
 }
 
 function handleFiring(dt) {
+    if (fireBlocked) {
+        if (!mousePressed && !gameInput.fire) fireBlocked = false;
+        return;
+    }
     fireCooldown -= dt;
     if (!(mousePressed || gameInput.fire) || fireCooldown > 0) return;
     fireCooldown = rapidFireMs > 0 ? 85 : 165;
@@ -866,7 +1356,7 @@ function applyPowerup(type) {
     else if (type === 'spread') spreadShotMs = 8000;
     else if (type === 'shield') shieldActive = true;
     else if (type === 'life') {
-        lives = Math.min(MAX_LIVES, lives + 1);
+        lives = Math.min(maxLives, lives + 1);
         updateHud();
     }
 }
@@ -886,7 +1376,7 @@ function updatePowerups(dt) {
         if (!gameOver && hits(p, arwing)) {
             applyPowerup(p.powerType);
             spawnExplosion(p.x, p.y, 0.06);
-            playSound('assets/sounds/explosion2.mp3', 0.4);
+            playSound('assets/sounds/level_up.mp3', 0.6);
             destroy(p, powerupList);
         }
     }
@@ -921,25 +1411,37 @@ function onPlayerHit() {
 function gameOverSequence() {
     gameOver = true;
     arwing.visible = false;
-    backgroundMusic.pause();
-    playSound('assets/sounds/game-over.mp3', 0.8);
+    pauseAllMusic();
+    gameStartSound.pause();
+    playSound('assets/sounds/game_over.mp3', 0.8);
 
-    if (score > 0) saveScore(score);
     if (score > highscore) {
         highscore = score;
         try { localStorage.setItem('starfox_highscore', String(highscore)); } catch (e) { }
     }
 
     bestText.text = 'Best: ' + highscore;
-    overScoreText.text = scoreboardText();
     if (!gameOverText.parent) uiLayer.addChild(gameOverText);
     if (!bestText.parent) uiLayer.addChild(bestText);
-    if (!overScoreText.parent) uiLayer.addChild(overScoreText);
-    if (!restartButton.parent) uiLayer.addChild(restartButton);
+
+    if (score > 0) {
+        showNameEntry();
+    } else {
+        finishGameOver();
+    }
     layoutUI();
 }
 
-function restartGame() {
+function finishGameOver() {
+    overScoreText.text = scoreboardText(difficulty);
+    if (!overScoreText.parent) uiLayer.addChild(overScoreText);
+    if (!restartButton.parent) uiLayer.addChild(restartButton);
+    if (!menuButton.parent) uiLayer.addChild(menuButton);
+    layoutUI();
+}
+
+function resetRoundState() {
+    commitName();
     destroyAll(shipList);
     destroyAll(laserList);
     destroyAll(enemyLasers);
@@ -949,7 +1451,7 @@ function restartGame() {
     lives = 3;
     gameOver = false;
     gamePaused = false;
-    gameSpeed = 1000;
+    gameSpeed = currentDifficulty().spawnMs;
     spawnAccum = 0;
     diffAccum = 0;
     arwingInvuln = 1000;
@@ -958,6 +1460,7 @@ function restartGame() {
     shieldActive = false;
     shieldGfx.visible = false;
     fireCooldown = 0;
+    fireBlocked = true;
     powerupTimer = 6000;
 
     arwing.visible = true;
@@ -969,17 +1472,47 @@ function restartGame() {
     arwing.y = app.screen.height * 0.75;
 
     pauseContainer.visible = false;
-    startContainer.visible = false;
-    showStart = false;
 
     if (gameOverText.parent) uiLayer.removeChild(gameOverText);
     if (bestText.parent) uiLayer.removeChild(bestText);
     if (overScoreText.parent) uiLayer.removeChild(overScoreText);
     if (restartButton.parent) uiLayer.removeChild(restartButton);
+    if (menuButton.parent) uiLayer.removeChild(menuButton);
+}
+
+function restartGame() {
+    resetRoundState();
+    showStart = false;
+    startContainer.visible = false;
+    musicContainer.visible = false;
+    musicMenuOpen = false;
+    musicPreviewId = null;
 
     refreshHudVisibility();
     updateHud();
-    if (!muted) backgroundMusic.play().catch(() => { });
+    updateScoreboardTexts();
+    startGameAudio();
+    layoutUI();
+}
+
+function goToMainMenu() {
+    resetRoundState();
+    pauseAllMusic();
+    gameStartSound.pause();
+    musicStarted = false;
+    musicPreviewId = null;
+    musicMenuOpen = false;
+    musicContainer.visible = false;
+    startContainer.visible = true;
+    showStart = true;
+
+    refreshHudVisibility();
+    updateHud();
+    updateScoreboardTexts();
+    updateControlButtons();
+    updateMusicMenuState();
+    maybePlayMenuMusic();
+    layoutUI();
 }
 
 function destroyAll(arr) {
@@ -1022,40 +1555,73 @@ function layoutUI() {
         bg.y = cy;
     }
 
+    musicDisc.scale.set(Math.min(w, h) / 900);
+    musicDisc.x = cx;
+    musicDisc.y = cy;
+
     startTitle.x = cx;
-    startTitle.y = h * 0.22;
+    startTitle.y = h * 0.15;
     startSubtitle.x = cx;
-    startSubtitle.y = h * 0.22 + 58;
+    startSubtitle.y = h * 0.15 + 52;
     startMouseBtn.x = cx - 120;
-    startMouseBtn.y = h * 0.42;
+    startMouseBtn.y = h * 0.31;
     startKeyBtn.x = cx + 120;
-    startKeyBtn.y = h * 0.42;
+    startKeyBtn.y = h * 0.31;
+    startDiffRow.x = cx;
+    startDiffRow.y = h * 0.42;
+    startButton.x = cx;
+    startButton.y = h * 0.545;
+    startMusicBtn.x = cx;
+    startMusicBtn.y = h * 0.64;
     startHint.x = cx;
-    startHint.y = h * 0.52;
+    startHint.y = h * 0.72;
     startScore.x = cx;
-    startScore.y = h * 0.72;
+    startScore.y = h * 0.875;
+
+    musicTitle.x = cx;
+    musicTitle.y = cy - 205;
+    musicSubtitle.x = cx;
+    musicSubtitle.y = cy - 152;
+    musicButtons.forEach((entry, i) => {
+        entry.btn.x = cx;
+        entry.btn.y = cy - 95 + i * 46;
+    });
+    musicStopBtn.x = cx;
+    musicStopBtn.y = cy - 95 + musicButtons.length * 46;
+    musicBackBtn.x = cx;
+    musicBackBtn.y = h - 96;
+    musicBackHint.x = cx;
+    musicBackHint.y = h - 48;
 
     pauseTitle.x = cx;
-    pauseTitle.y = cy - 120;
+    pauseTitle.y = cy - 190;
     pauseControlLabel.x = cx;
-    pauseControlLabel.y = cy - 62;
+    pauseControlLabel.y = cy - 135;
     pauseMouseBtn.x = cx - 120;
-    pauseMouseBtn.y = cy + 5;
+    pauseMouseBtn.y = cy - 88;
     pauseKeyBtn.x = cx + 120;
-    pauseKeyBtn.y = cy + 5;
+    pauseKeyBtn.y = cy - 88;
+    pauseDiffRow.x = cx;
+    pauseDiffRow.y = cy - 28;
     pauseResumeBtn.x = cx;
-    pauseResumeBtn.y = cy + 78;
+    pauseResumeBtn.y = cy + 45;
+    pauseRestartBtn.x = cx;
+    pauseRestartBtn.y = cy + 103;
+    pauseMenuBtn.x = cx;
+    pauseMenuBtn.y = cy + 161;
     pauseHint.x = cx;
-    pauseHint.y = cy + 126;
+    pauseHint.y = cy + 216;
 
     gameOverText.x = cx;
-    gameOverText.y = cy - 150;
+    gameOverText.y = cy - 235;
     bestText.x = cx;
-    bestText.y = cy - 92;
+    bestText.y = cy - 182;
     overScoreText.x = cx;
-    overScoreText.y = cy - 8;
+    overScoreText.y = cy + 40;
     restartButton.x = cx;
-    restartButton.y = cy + 120;
+    restartButton.y = cy + 205;
+    menuButton.x = cx;
+    menuButton.y = cy + 268;
 }
 
 function onResize() {
@@ -1137,14 +1703,18 @@ app.ticker.add((delta) => {
     updateStars(dt);
     updateShake(dt);
     updateShieldSprite();
+    updateMusicFades(dt);
+    updateMusicDisc(dt);
     if (!gameOver && !gamePaused && !showStart) update(dt);
     updateWarningSound();
 });
 
 initStars();
-updateHud();
+applyDifficulty();
 updateStars(0);
 updateControlButtons();
+updateMusicMenuState();
 refreshHudVisibility();
-startScore.text = scoreboardText();
 layoutUI();
+startMenuMusicNow();
+for (const ev of MENU_UNLOCK_EVENTS) document.addEventListener(ev, unlockMenuMusic, { once: true });
