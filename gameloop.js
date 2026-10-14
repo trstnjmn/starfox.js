@@ -4,28 +4,21 @@ let GAMELOOPJS_INTERVALS = [];
 
 const GAMELOOPJS_KEY = {};
 
+// Shared input state consumed by the game (app.js). Arrow keys and WASD.
+const gameInput = { left: false, right: false, up: false, down: false, fire: false };
+
 document.addEventListener('keydown', e => GAMELOOPJS_KEY[e.keyCode] = true);
 document.addEventListener('keyup', e => GAMELOOPJS_KEY[e.keyCode] = false);
 
-function leftKeyPressed() {
-    console.log('Please implement the function leftKeyPressed()');
-}
+function leftKeyPressed() { gameInput.left = true; }
 
-function rightKeyPressed() {
-    console.log('Please implement the function rightKeyPressed()');
-}
+function rightKeyPressed() { gameInput.right = true; }
 
-function upKeyPressed() {
-    console.log('Please implement the function upKeyPressed()');
-}
+function upKeyPressed() { gameInput.up = true; }
 
-function downKeyPressed() {
-    console.log('Please implement the function downKeyPressed()');
-}
+function downKeyPressed() { gameInput.down = true; }
 
-function spaceKeyPressed() {
-    console.log('Please implement the function spaceKeyPressed()');
-}
+function spaceKeyPressed() { gameInput.fire = true; }
 
 function flyUp(gameObject, speed = 10, repeat = 2000) {
     let i = 0;
@@ -57,11 +50,19 @@ GAMELOOPJS_START();
 function GAMELOOPJS_START() {
     let spaceKeyLocked = false;
     gameInterval(() => {
-        if (GAMELOOPJS_KEY[37]) leftKeyPressed();
-        if (GAMELOOPJS_KEY[39]) rightKeyPressed();
-        if (GAMELOOPJS_KEY[38]) upKeyPressed();
-        if (GAMELOOPJS_KEY[40]) downKeyPressed();
+        gameInput.left = false;
+        gameInput.right = false;
+        gameInput.up = false;
+        gameInput.down = false;
+        gameInput.fire = false;
+
+        // Arrow keys (37-40) or WASD (65/87/68/83)
+        if (GAMELOOPJS_KEY[37] || GAMELOOPJS_KEY[65]) leftKeyPressed();
+        if (GAMELOOPJS_KEY[39] || GAMELOOPJS_KEY[68]) rightKeyPressed();
+        if (GAMELOOPJS_KEY[38] || GAMELOOPJS_KEY[87]) upKeyPressed();
+        if (GAMELOOPJS_KEY[40] || GAMELOOPJS_KEY[83]) downKeyPressed();
         if (GAMELOOPJS_KEY[32]) {
+            gameInput.fire = true;
             if (!spaceKeyLocked) {
                 spaceKeyPressed();
                 spaceKeyLocked = true;
