@@ -223,6 +223,7 @@ function startMenuMusicNow() {
         startMusicHint.visible = false;
         removeMenuUnlockListeners();
     }).catch(() => {
+        startMusicHint.visible = true;
         el.muted = true;
         el.volume = 1;
         el.play().catch(() => { });
