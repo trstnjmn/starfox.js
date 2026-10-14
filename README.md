@@ -12,6 +12,10 @@ A small browser-based arcade game inspired by Star Fox, built with [PixiJS](http
 
 **In short:** fly the Arwing with mouse or keyboard, fire with the left mouse button or space bar, dodge the enemies, and collect power-ups.
 
+<p align="center">
+  <a href="https://starfox-js.vercel.app" target="_blank">Demo</a>
+</p>
+
 ---
 
 ## Features
