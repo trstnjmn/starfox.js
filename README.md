@@ -2,12 +2,25 @@
 
 Ein kleines, browserbasiertes Arcade-Spiel inspiriert von Star Fox, umgesetzt mit PixiJS.
 
-Kurz: Bewege das Raumschiff mit der Maus, feuere mit der linken Maustaste und weiche herabstürzenden Gegnern aus.
+Kurz: Steuere das Arwing mit Maus oder Tastatur, feuere mit linker Maustaste bzw. Leertaste, weiche den Gegnern aus und sammle Power-ups.
 
 Features
-- PixiJS-Rendering über CDN (`index.html`).
-- Mausgesteuerte Spielerbewegung und Laser-Schüsse.
-- Gegner-Spawns mit steigender Schwierigkeit (Spawnrate nimmt mit der Zeit zu).
+- PixiJS-Rendering über CDN (`index.html`), Vollbild-Canvas über die ganze Fenstergröße.
+- Startbildschirm zur Wahl der Steuerung (Maus oder Tastatur); im Pause-Menü änderbar, Wahl wird in `localStorage` gespeichert.
+- Maus- **und** Tastatursteuerung (Pfeiltasten oder WASD, Leertaste zum Feuern).
+- Der Arwing neigt sich beim Fliegen nach links/rechts.
+- Gegner-Spawns mit steigender Schwierigkeit.
+- Gegner-Verhalten: `ship1`/`ship2` fliegen seitlich und feuern, `rock` rotiert und ist unterschiedlich groß, `satellite` fliegt kreisend, `bork` braucht zwei Treffer und explodiert beim zweiten mit Schadensradius.
+- Treffer auf `ship1`/`ship2`/`satellite`: Sie wechseln auf ihr Damage-Sprite und stürzen taumelnd nach unten (kurzzeitig ohne Hitbox, danach wieder kollidierbar).
+- Health-/Leben-System (3 Leben) mit kurzer Unverwundbarkeit nach einem Treffer; der Arwing zeigt passende Schadens-Sprites (`Arwing_damage_1/2.png`), `bork` nach dem ersten Treffer `bork_damaged.png`.
+- Power-ups im Retro-Pixel-Look (blockige Kacheln mit Symbol): Rapid Fire (R), Spread-Shot (S), Schild (D) und ein seltenes 1UP (Kreuz) für ein Extraleben (max. 5).
+- `bork` teleportiert sich gelegentlich zufällig an eine neue Position, mit Pixel-Burst-Effekt (kurzzeitig unantastbar). Nach dem **ersten** Treffer teleportiert er sich sofort weg (mit Schadens-Sprite) und ist währenddessen unverwundbar.
+- Alle Spiel-Assets (Arwing, Gegner, Laser, Power-ups, Explosionen, Schild) werden über `ASSET_SCALE = 1.25` um 25 % größer dargestellt.
+- `logo.png` als Favicon im Browser-Tab und als dezentes Hintergrund-Wasserzeichen im Haupt- und Pause-Menü.
+- Warnsound (`warning.mp3`) läuft in Dauerschleife, solange nur noch ein Leben übrig ist (stoppt bei Pause/Game Over/Stumm).
+- Scoreboard mit den Top 5 (`localStorage`), Game-Over-Screen und Restart-Button.
+- Mute-/Unmute-Toggle für Sound.
+- Scrollender Sternenhimmel und Screen-Shake bei Explosionen.
 - Soundeffekte & Hintergrundmusik (Assets in `assets/sounds`).
 
 Schnellstart
@@ -25,35 +38,28 @@ Voraussetzungen
 - Keine weiteren Installationen nötig (PixiJS wird via CDN geladen).
 
 Bedienung / Steuerung
-- Maus: Bewege das Schiff (Arwing) durch die Spielwelt.
-- Linke Maustaste: Feuer (Laser). Es gibt ein kleines Cooldown zwischen Schüssen.
-- Pause: Das Spiel pausiert automatisch, wenn die Maus das Canvas verlässt; beim Wiedereintreten wird es fortgesetzt.
-- Tastatur: Es gibt Key-Handler (Pfeiltasten, Leertaste) im `gameloop.js`, die Funktionen sind aber noch unimplementiert.
+- Start: Auf dem Startbildschirm „Maus" oder „Tastatur" wählen — die Wahl wird gespeichert.
+- Maus: Bewege das Schiff (Arwing) durch die Spielwelt (nur im Maus-Modus).
+- Tastatur: Pfeiltasten oder WASD (nur im Tastatur-Modus).
+- Feuern: Linke Maustaste oder Leertaste.
+- Pause: `P` oder `Escape`. Im Pause-Menü kann die Steuerung gewechselt werden. Das Spiel pausiert außerdem automatisch, wenn das Fenster den Fokus verliert.
+- Neustart nach Game Over: `R` oder Klick auf „Restart".
+- Sound: `M` oder Klick auf „Sound: ON/OFF".
 
 Projektstruktur (wichtigste Dateien)
 - `index.html` – Einfacher HTML-Entrypoint; lädt `gameloop.js`, PixiJS-CDN und `app.js`.
-- `app.js` – Hauptspiel-Logik: Erstellen von Sprites, Spawn-Logik, Input (Maus), Score, Soundsteuerung.
-- `gameloop.js` – Timing-, Hilfsfunktionen und Kollisionsabfragen (`gameInterval`, `waitForCollision`, `isColliding`).
-- `assets/` – Bilder (`arwing.png`, `ship1.png` ..) und Sounds (`assets/sounds/*`).
+- `app.js` – Hauptspiel-Logik: Sprites, Spawn-Logik, Input (Maus/Tastatur), Leben, Score, Power-ups, Soundsteuerung.
+- `gameloop.js` – Timing-, Hilfsfunktionen, Keyboard-Input-State und Kollisionsabfragen.
+- `assets/` – Bilder (`arwing.png`, `ship1.png`, `ship2.png`, `rock.png`, `satellite.png`, `bork.png`) und Sounds (`assets/sounds/*`).
 
 Entwicklerhinweise
 - PixiJS wird aus dem CDN in `index.html` geladen (Version 7.x). Für Offline- oder gebündelte Builds kann man Pixi lokal installieren.
-- Audiowiedergabe: Browser blockieren häufig Autoplay; deshalb versucht `app.js` die Hintergrundmusik zu starten und registriert zusätzlich ein `pointerdown`-Event, um die Musik bei der ersten Nutzerinteraktion zu starten.
-- Kollisionsprüfung: Die Variable `arwingCollisionBox` ist initial auf `false` gesetzt, onmouseenter des Canvas wird sie auf `true` gesetzt — Collision-Handling ist also an Cursor-Interaktion gebunden. Falls du Kollisionen immer aktiv haben willst, setze `arwingCollisionBox = true` in `app.js`.
-- Unbenutzte/Platzhalter-Funktionen: In `gameloop.js` sind `leftKeyPressed`, `rightKeyPressed`, `upKeyPressed`, `downKeyPressed`, `spaceKeyPressed` nur Platzhalter; hier kannst du Keyboard-Support implementieren.
-- Performance: Aktuell werden viele setInterval-basierte Timer verwendet. Für bessere Performance könntest du auf `requestAnimationFrame` und Delta-Zeit-Berechnung umstellen.
-
-Verbesserungsvorschläge
-- Responsive Canvas: Aktuell wird die Canvas-Größe nicht dynamisch an das Fenster angepasst. Eine Resize-Handler-Implementierung würde die Spielbarkeit auf verschiedenen Auflösungen verbessern.
-- Touch-Unterstützung: Für mobile Geräte Touch-Events ergänzen (z.B. Touchmove + Touchstart als Ersatz für Maus).
-- UI: Menü, Highscore Speicherung (localStorage), Lives/Health-System, Schwierigkeitsauswahl.
-- Tests & Linting: Einfache `package.json` mit Linter/Formatter für Beiträge hinzufügen.
+- Audiowiedergabe: Browser blockieren häufig Autoplay; deshalb startet `app.js` die Hintergrundmusik und registriert zusätzlich ein `pointerdown`-Event, um die Musik bei der ersten Nutzerinteraktion zu starten.
+- Spiel-Update läuft über den Pixi-`ticker` (requestAnimationFrame), Tasteneingaben werden in `gameloop.js` in `gameInput` gespiegelt.
+- Kollisionen nutzen AABB über `getBounds()` und funktionieren unabhängig von der Szenen-Hierarchie (Layer `starLayer`, `gameLayer`, `uiLayer`).
 
 Mitwirken
 - Pull Requests sind willkommen. Füge eine kurze Beschreibung und Reproduktionsschritte für Änderungen hinzu.
 - Bitte eine Lizenzdatei (`LICENSE`) ergänzen — momentan ist kein Lizenzhinweis enthalten.
-
-Kontakt
-- Repo: lokales Projekt (du kannst diesen README-Text anpassen oder erweitern).
 
 Viel Spaß beim Entwickeln und Spielen!
