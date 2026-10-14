@@ -4,6 +4,10 @@
   <img src="assets/logo.png" alt="starfox.js logo" width="320">
 </p>
 
+<p align="center">
+  <a href="https://github.com/trstnjmn/starfox.js">github.com/trstnjmn/starfox.js</a>
+</p>
+
 A small browser-based arcade game inspired by Star Fox, built with [PixiJS](https://pixijs.com/).
 
 **In short:** fly the Arwing with mouse or keyboard, fire with the left mouse button or space bar, dodge the enemies, and collect power-ups.
@@ -144,4 +148,5 @@ All game assets live under `assets/`. Most images are designed on a 1080×1080 b
 ## Contributing
 
 - Pull requests are welcome. Please include a short description and reproduction steps for your changes.
+- Repository: <https://github.com/trstnjmn/starfox.js>
 - Please add a license file (`LICENSE`) — there is currently no license notice.
