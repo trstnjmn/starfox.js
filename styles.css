@@ -3,11 +3,16 @@ html, body {
   margin: 0;
   background: #05070d;
   overflow: hidden;
+  overscroll-behavior: none;
+  touch-action: none;
 }
 
 body {
   color: #fff;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
 }
 
 #site-title {
@@ -17,10 +22,12 @@ body {
 #game-container {
   position: fixed;
   inset: 0;
+  touch-action: none;
 }
 
 #game-container canvas {
   display: block;
+  touch-action: none;
 }
 
 #name-entry {
@@ -69,10 +76,35 @@ body {
   text-transform: uppercase;
   caret-color: #66ccff;
   text-shadow: 0 0 10px rgba(255, 204, 0, 0.85);
+  -webkit-user-select: text;
+  user-select: text;
 }
 
 #name-entry .ne-hint {
   color: #bbbbbb;
   font-size: 12px;
   letter-spacing: 2px;
+}
+
+@media (max-width: 560px), (max-height: 620px) {
+  #name-entry {
+    top: 42%;
+    gap: 8px;
+    padding: 14px 18px;
+  }
+
+  #name-entry .ne-title {
+    font-size: 20px;
+    letter-spacing: 2px;
+  }
+
+  #name-entry .ne-sub {
+    font-size: 12px;
+  }
+
+  #name-input {
+    width: 170px;
+    font-size: 28px;
+    letter-spacing: 9px;
+  }
 }

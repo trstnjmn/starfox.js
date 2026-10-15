@@ -1,6 +1,8 @@
 const app = new PIXI.Application({
     resizeTo: window,
     antialias: true,
+    resolution: Math.min(window.devicePixelRatio || 1, 2),
+    autoDensity: true,
     backgroundColor: 0x05070d
 });
 
@@ -15,6 +17,18 @@ app.stage.addChild(starLayer, gameLayer, uiLayer);
 const MARGIN = 26;
 const FALL_FACTOR = 0.06;
 const ASSET_SCALE = 1.25;
+let worldScale = ASSET_SCALE;
+let uiScale = 1;
+
+const isTouchDevice = (window.matchMedia && window.matchMedia('(pointer: coarse)').matches) || ('ontouchstart' in window);
+
+function computeScales() {
+    const w = app.screen.width;
+    const h = app.screen.height;
+    const base = Math.min(w, h);
+    worldScale = ASSET_SCALE * Math.max(0.6, Math.min(1, base / 900));
+    uiScale = Math.max(0.68, Math.min(1, Math.min(w / 900, h / 760)));
+}
 
 const DIFFICULTIES = [
     { name: 'Sehr leicht', spawnMs: 1600, maxLives: 8 },
@@ -53,6 +67,7 @@ let showStart = true;
 
 let controlMode = null;
 try { controlMode = localStorage.getItem('starfox_control'); } catch (e) { controlMode = null; }
+if (isTouchDevice) controlMode = 'mouse';
 
 let savedName = '';
 try { savedName = (localStorage.getItem('starfox_name') || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 5); } catch (e) { }
@@ -343,10 +358,10 @@ PIXI.Texture.from('assets/satellite_damaged.png');
 
 const arwing = PIXI.Sprite.from('assets/arwing.png');
 arwing.anchor.set(0.5);
-arwing.scale.set(0.08 * ASSET_SCALE);
 arwing.rotation = Math.PI;
 arwing.x = app.screen.width / 2;
 arwing.y = app.screen.height * 0.75;
+applyArwingScale();
 gameLayer.addChild(arwing);
 
 function swapTextureFitted(sprite, tex) {
@@ -364,6 +379,11 @@ function swapTextureFitted(sprite, tex) {
 function updateArwingTexture() {
     const tex = ARWING_TEXTURES[Math.max(1, Math.min(3, lives))];
     swapTextureFitted(arwing, tex);
+}
+
+function applyArwingScale() {
+    const base = arwing.texture.width || 1080;
+    arwing.scale.set((1080 * 0.08 * worldScale) / base);
 }
 
 const shieldGfx = new PIXI.Graphics();
@@ -464,6 +484,13 @@ pauseContainer.addChild(pauseTitle, pauseControlLabel, pauseMouseBtn, pauseKeyBt
 pauseContainer.visible = false;
 uiLayer.addChild(pauseContainer);
 
+if (isTouchDevice) {
+    startMouseBtn.text = 'Touch';
+    pauseMouseBtn.text = 'Touch';
+    startHint.text = 'Ziehen zum Steuern · feuert automatisch';
+    pauseHint.text = 'Weiter antippen';
+}
+
 const startDiffRow = buildDifficultyRow();
 const pauseDiffRow = buildDifficultyRow();
 startContainer.addChild(startDiffRow);
@@ -551,6 +578,51 @@ document.addEventListener('mousemove', (e) => {
 document.addEventListener('mousedown', (e) => { if (e.button === 0) mousePressed = true; });
 document.addEventListener('mouseup', (e) => { if (e.button === 0) mousePressed = false; });
 
+let touchDrag = null;
+
+function touchPos(t) {
+    const rect = app.view.getBoundingClientRect();
+    return {
+        x: (t.clientX - rect.left) * (app.screen.width / rect.width),
+        y: (t.clientY - rect.top) * (app.screen.height / rect.height)
+    };
+}
+
+document.addEventListener('touchstart', (e) => {
+    if (e.target !== app.view) return;
+    const t = e.changedTouches[0];
+    if (!t) return;
+    const p = touchPos(t);
+    touchDrag = { sx: p.x, sy: p.y, ax: arwing.x, ay: arwing.y };
+    mouseX = arwing.x;
+    mouseY = arwing.y;
+    mousePressed = true;
+    if (e.cancelable) e.preventDefault();
+}, { passive: false });
+
+document.addEventListener('touchmove', (e) => {
+    if (e.target !== app.view) return;
+    const t = e.touches[0];
+    if (!t) return;
+    const p = touchPos(t);
+    if (touchDrag) {
+        mouseX = touchDrag.ax + (p.x - touchDrag.sx);
+        mouseY = touchDrag.ay + (p.y - touchDrag.sy);
+    } else {
+        mouseX = p.x;
+        mouseY = p.y;
+    }
+    if (e.cancelable) e.preventDefault();
+}, { passive: false });
+
+function endTouch() {
+    touchDrag = null;
+    mousePressed = false;
+}
+
+document.addEventListener('touchend', endTouch, { passive: false });
+document.addEventListener('touchcancel', endTouch, { passive: false });
+
 document.addEventListener('keydown', (e) => {
     if (awaitingName) return;
     if (e.key === 'p' || e.key === 'P' || e.key === 'Escape') togglePause();
@@ -588,7 +660,7 @@ function shake(mag, dur) {
 function spawnExplosion(x, y, scale = 0.08) {
     const e = PIXI.Sprite.from('assets/explosion.png');
     e.anchor.set(0.5);
-    e.scale.set(scale * ASSET_SCALE);
+    e.scale.set(scale * worldScale);
     e.x = x;
     e.y = y;
     gameLayer.addChild(e);
@@ -651,7 +723,7 @@ function updateControlButtons() {
     setButtonState(startKeyBtn, controlMode === 'keyboard');
     setButtonState(pauseMouseBtn, controlMode === 'mouse');
     setButtonState(pauseKeyBtn, controlMode === 'keyboard');
-    pauseControlLabel.text = 'Steuerung: ' + (controlMode === 'keyboard' ? 'Tastatur' : 'Maus');
+    pauseControlLabel.text = 'Steuerung: ' + (controlMode === 'keyboard' ? 'Tastatur' : (isTouchDevice ? 'Touch' : 'Maus'));
 }
 
 function chooseControl(mode) {
@@ -887,6 +959,8 @@ function startGame() {
     gamePaused = false;
     fireBlocked = true;
     applyDifficulty();
+    mouseX = arwing.x;
+    mouseY = arwing.y;
     startGameAudio();
     refreshHudVisibility();
     layoutUI();
@@ -985,7 +1059,7 @@ function spawnShip() {
     const def = ENEMY_DEFS[kind];
     const ship = PIXI.Sprite.from(def.file);
     ship.anchor.set(0.5);
-    ship.scale.set(kind === 'rock' ? random(4, 11) * ASSET_SCALE / 100 : 0.07 * ASSET_SCALE);
+    ship.scale.set(kind === 'rock' ? random(4, 11) * worldScale / 100 : 0.07 * worldScale);
     if (kind === 'rock') ship.spinSpeed = (random(0, 1) ? 1 : -1) * random(5, 20) / 10000;
     ship.x = random(30, Math.max(31, app.screen.width - 30));
     ship.y = -30;
@@ -1098,7 +1172,7 @@ function updateShips(dt) {
 function fireEnemyLaser(ship) {
     const l = PIXI.Sprite.from('assets/laser.png');
     l.anchor.set(0.5);
-    l.scale.set(0.03 * ASSET_SCALE);
+    l.scale.set(0.03 * worldScale);
     l.x = ship.x;
     l.y = ship.y + 22;
     l.vx = 0;
@@ -1137,7 +1211,7 @@ function fireLaser() {
     for (const a of angles) {
         const laser = PIXI.Sprite.from('assets/laser.png');
         laser.anchor.set(0.5);
-        laser.scale.set(0.03 * ASSET_SCALE);
+        laser.scale.set(0.03 * worldScale);
         laser.x = arwing.x + a * 80;
         laser.y = arwing.y - 26;
         laser.vx = Math.sin(a) * speed;
@@ -1220,7 +1294,7 @@ function onShipKilled(ship) {
     const x = ship.x;
     const y = ship.y;
     destroy(ship, shipList);
-    if (big && !gameOver) spawnBlast(x, y, 95 * ASSET_SCALE);
+    if (big && !gameOver) spawnBlast(x, y, 95 * worldScale);
     score += ship.scoreValue || 1;
     updateHud();
 }
@@ -1331,7 +1405,9 @@ function borkTeleport(ship) {
     requestAnimationFrame(vanish);
 }
 
-const POWERUP_PIXEL = Math.round(3 * ASSET_SCALE);
+function powerupPixel() {
+    return Math.max(2, Math.round(3 * worldScale));
+}
 const POWERUP_SYMBOLS = {
     rapid: ['####.', '#...#', '####.', '#..#.', '#...#'],
     spread: ['.####', '#....', '.###.', '....#', '####.'],
@@ -1348,6 +1424,7 @@ function mixColor(a, b, t) {
 function buildPixelPowerup(color, symbol) {
     const g = new PIXI.Graphics();
     const n = 9;
+    const px = powerupPixel();
     const dark = 0x101018;
     const light = mixColor(color, 0xffffff, 0.55);
     for (let y = 0; y < n; y++) {
@@ -1357,17 +1434,17 @@ function buildPixelPowerup(color, symbol) {
             if (x === 0 || y === 0 || x === n - 1 || y === n - 1) col = dark;
             else if (x === 1 || y === 1) col = light;
             else col = color;
-            g.beginFill(col).drawRect(x * POWERUP_PIXEL, y * POWERUP_PIXEL, POWERUP_PIXEL, POWERUP_PIXEL).endFill();
+            g.beginFill(col).drawRect(x * px, y * px, px, px).endFill();
         }
     }
     for (let y = 0; y < symbol.length; y++) {
         for (let x = 0; x < symbol[y].length; x++) {
             if (symbol[y][x] === '#') {
-                g.beginFill(0xffffff).drawRect((2 + x) * POWERUP_PIXEL, (2 + y) * POWERUP_PIXEL, POWERUP_PIXEL, POWERUP_PIXEL).endFill();
+                g.beginFill(0xffffff).drawRect((2 + x) * px, (2 + y) * px, px, px).endFill();
             }
         }
     }
-    g.pivot.set(n * POWERUP_PIXEL / 2, n * POWERUP_PIXEL / 2);
+    g.pivot.set(n * px / 2, n * px / 2);
     return g;
 }
 
@@ -1509,6 +1586,8 @@ function resetRoundState() {
     arwing.rotation = Math.PI;
     arwing.x = app.screen.width / 2;
     arwing.y = app.screen.height * 0.75;
+    mouseX = arwing.x;
+    mouseY = arwing.y;
 
     pauseContainer.visible = false;
 
@@ -1575,6 +1654,8 @@ function layoutUI() {
     const cx = w / 2;
     const cy = h / 2;
 
+    computeScales();
+
     logo.x = 90;
     logo.y = 46;
     livesText.x = 20;
@@ -1602,10 +1683,16 @@ function layoutUI() {
     startTitle.y = h * 0.15;
     startSubtitle.x = cx;
     startSubtitle.y = h * 0.15 + 52;
-    startMouseBtn.x = cx - 120;
     startMouseBtn.y = h * 0.31;
-    startKeyBtn.x = cx + 120;
     startKeyBtn.y = h * 0.31;
+    if (isTouchDevice) {
+        startMouseBtn.x = cx;
+        startKeyBtn.visible = false;
+    } else {
+        startMouseBtn.x = cx - 120;
+        startKeyBtn.x = cx + 120;
+        startKeyBtn.visible = true;
+    }
     startDiffRow.x = cx;
     startDiffRow.y = h * 0.42;
     startButton.x = cx;
@@ -1630,18 +1717,24 @@ function layoutUI() {
     musicStopBtn.x = cx;
     musicStopBtn.y = cy - 95 + musicButtons.length * 46;
     musicBackBtn.x = cx;
-    musicBackBtn.y = h - 96;
+    musicBackBtn.y = musicStopBtn.y + 58;
     musicBackHint.x = cx;
-    musicBackHint.y = h - 48;
+    musicBackHint.y = musicStopBtn.y + 100;
 
     pauseTitle.x = cx;
     pauseTitle.y = cy - 190;
     pauseControlLabel.x = cx;
     pauseControlLabel.y = cy - 135;
-    pauseMouseBtn.x = cx - 120;
     pauseMouseBtn.y = cy - 88;
-    pauseKeyBtn.x = cx + 120;
     pauseKeyBtn.y = cy - 88;
+    if (isTouchDevice) {
+        pauseMouseBtn.x = cx;
+        pauseKeyBtn.visible = false;
+    } else {
+        pauseMouseBtn.x = cx - 120;
+        pauseKeyBtn.x = cx + 120;
+        pauseKeyBtn.visible = true;
+    }
     pauseDiffRow.x = cx;
     pauseDiffRow.y = cy - 28;
     pauseResumeBtn.x = cx;
@@ -1654,15 +1747,29 @@ function layoutUI() {
     pauseHint.y = cy + 216;
 
     gameOverText.x = cx;
-    gameOverText.y = cy - 235;
+    gameOverText.y = cy - 210 * uiScale;
     bestText.x = cx;
-    bestText.y = cy - 182;
+    bestText.y = cy - 165 * uiScale;
     overScoreText.x = cx;
-    overScoreText.y = cy + 40;
+    overScoreText.y = cy + 55 * uiScale;
     restartButton.x = cx;
-    restartButton.y = cy + 205;
+    restartButton.y = cy + 185 * uiScale;
     menuButton.x = cx;
-    menuButton.y = cy + 268;
+    menuButton.y = cy + 240 * uiScale;
+
+    for (const c of [startContainer, musicContainer, pauseContainer]) {
+        c.pivot.set(cx, cy);
+        c.position.set(cx, cy);
+        c.scale.set(uiScale);
+    }
+
+    logo.scale.set(0.12 * uiScale);
+    for (const t of [livesText, scoreText, highscoreText, soundButton, gameOverText, bestText, overScoreText, restartButton, menuButton]) {
+        t.scale.set(uiScale);
+    }
+
+    applyArwingScale();
+    shieldGfx.scale.set(worldScale / ASSET_SCALE);
 }
 
 function onResize() {
@@ -1758,4 +1865,7 @@ updateMusicMenuState();
 refreshHudVisibility();
 layoutUI();
 startMenuMusicNow();
+setTimeout(() => {
+    if (!muted && showStart && !menuMusicUnlocked) startMusicHint.visible = true;
+}, 1000);
 for (const ev of MENU_UNLOCK_EVENTS) document.addEventListener(ev, attemptUnlockMenuMusic);
