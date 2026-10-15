@@ -28,9 +28,11 @@ A small browser-based arcade game inspired by Star Fox, built with [PixiJS](http
 - The Arwing tilts left/right while flying.
 - Enemy spawns that get denser as the difficulty rises.
 - Enemy behavior: `ship1`/`ship2` fly sideways and shoot, `rock` rotates and varies in size, `satellite` flies in an orbit, `bork` takes two hits and explodes on the second one with a blast radius.
-- Hits on `ship1`/`ship2`/`satellite`: they switch to their damage sprite and tumble downwards (briefly without a hitbox, then collidable again).
+- Hits on `ship1`/`ship2`/`satellite`: they switch to their damage sprite, fade to semi-transparent and tumble downwards — once shot down they have **no hitbox** (they can no longer damage the Arwing, and lasers/missiles pass through them) until they drift off-screen.
 - Health/lives system (3 lives) with brief invulnerability after a hit; the Arwing shows the matching damage sprites (`Arwing_damage_1/2.png`), `bork` shows `bork_damaged.png` after the first hit.
-- Retro pixel-art power-ups (blocky tiles with a symbol): Rapid Fire (R), Spread Shot (S), Shield (D), and a rare 1UP (cross) for an extra life (max. 5).
+- Retro pixel-art power-ups (blocky tiles with a symbol): Rapid Fire (R), Spread Shot (S), Shield (D), a rare 1UP (cross) for an extra life (max. 5), plus **Time-Slow**, **Invincibility**, and **Homing Missiles**. Active effects (and their remaining time) are shown at the top of the screen.
+- **Sectors / missions:** the game is split into sectors (Orbit, Asteroidenfeld, Satellitenguertel, Tiefraum). Reaching a score threshold advances you to the next sector, which changes the starfield/planet colors, increases enemy speed and density, and shows a "SEKTOR N" banner. The current sector is shown at the top of the HUD.
+- **Achievements:** 40 unlockable achievements (kills, bork hunts, score/time milestones, combos, shots fired, power-up collecting, shield saves, missiles, no-hit survival runs, sector progress). A toast pops up on unlock and the "Erfolge" menu (start screen) lists them across pages, with a two-step **Zurücksetzen** button to reset all progress; unlocks are saved in `localStorage`.
 - `bork` occasionally teleports to a random new position with a pixel-burst effect (briefly invulnerable). After the **first** hit it teleports away immediately (with its damage sprite) and is invulnerable while doing so.
 - All gameplay assets (Arwing, enemies, lasers, power-ups, explosions, shield) are scaled via `worldScale` (base `ASSET_SCALE = 1.25`), which shrinks on small screens so everything stays proportionate.
 - `logo.png` as the browser-tab favicon and as a subtle background watermark in the main and pause menu.
@@ -73,7 +75,7 @@ npx http-server -c-1 .
 
 ### Desktop
 
-- **Start:** on the start screen pick a control scheme ("Mouse" or "Keyboard") and a difficulty, then click **START** — the choice is saved. The "Music" button also lets you listen to a track.
+- **Start:** on the start screen pick a control scheme ("Mouse" or "Keyboard") and a difficulty, then click **START** — the choice is saved. The "Musik" button also lets you listen to a track, and "Erfolge" opens the achievements list.
 - **Mouse:** move the ship (Arwing) through the game world (mouse mode only).
 - **Keyboard:** arrow keys or WASD (keyboard mode only).
 - **Fire:** left mouse button or space bar.
@@ -120,13 +122,33 @@ After changing a cached file, bump `CACHE_NAME` in `service-worker.js` (e.g. `st
 | File | Purpose |
 | --- | --- |
 | `index.html` | Simple HTML entry point; viewport/PWA meta tags, manifest link, service-worker registration, and loads `gameloop.js`, the PixiJS CDN, and `app.js`. |
-| `app.js` | Main game logic: sprites, spawn logic, input (mouse/keyboard/touch), responsive scaling, lives, score, power-ups, audio control. |
+| `app.js` | Main game logic: sprites, spawn logic, input (mouse/keyboard/touch), responsive scaling, sectors, power-ups, achievements, lives, score, audio control. |
 | `gameloop.js` | Timing/helper functions, keyboard input state, and collision helpers. |
 | `styles.css` | Fullscreen layout and retro styles (name-entry overlay, etc.). |
+| `game-config.json` | Tunable game parameters (difficulties, enemies, power-ups, sectors, achievements, pacing). See [Configuration](#configuration) and [`CONFIG.md`](CONFIG.md). |
 | `manifest.webmanifest` | Web app manifest (PWA) with name, colors, and icons. |
 | `service-worker.js` | Caches the app shell for offline use and enables installation. |
 | `assets/` | Images, sound effects, background music, and PWA icons (see below). |
 | `README.md` | This document. |
+
+---
+
+## Configuration
+
+Most gameplay parameters live in `game-config.json` (loaded at startup and merged over built-in defaults, so a missing/removed key falls back to a sane value). **Editing it requires serving the game over HTTP(S)** — opening `index.html` via `file://` cannot fetch the JSON and will silently use the defaults.
+
+It must be **strict JSON** (no comments, no trailing commas). See [`CONFIG.md`](CONFIG.md) for a per-key reference of every value; all time values are milliseconds.
+
+| Section | What it controls |
+| --- | --- |
+| `tuning` | Fire cooldown (normal/rapid), laser speed, power-up spawn delay/interval, and the difficulty speed ramp. |
+| `difficulties` | The difficulty presets (`name`, `spawnMs`, `maxLives`). Add/remove entries freely; the selector adapts. |
+| `enemies` | Enemy definitions (`file`, `damaged`, `hp`, `score`, `shoots`, `lateral`, `orbit`, `crash`, `blast`) and a relative spawn `weight`. |
+| `powerups` | Spawn `weights` per power-up type, effect `durationsMs`, `missileIntervalMs`, and `slowFactor`. |
+| `levels` | The sectors: `name`, `advanceScore` (score needed to enter), `spawnMult` (spawn interval multiplier, <1 = more enemies), `speedMult`, `starTint`, `planetColor`. |
+| `achievements` | The achievement list (`id`, `name`, `desc`). The unlock logic in `app.js` (`ACHIEVEMENT_CHECKS`) uses these `id`s. |
+
+**Examples:** make the game harder by lowering `spawnMs`; add a sector by appending to `levels` with a higher `advanceScore`; rebalance power-ups via `powerups.weights`.
 
 ---
 
@@ -185,7 +207,9 @@ All game assets live under `assets/`. Most images are designed on a 1080×1080 b
 - **Audio playback:** browsers usually block autoplay, so the game starts music/sounds from a user gesture. On first load it tries to play the menu music immediately; if the browser blocks it, it starts (and unmutes) on the first interaction — a hint is shown on the start screen until it succeeds. The in-game music starts on the first player shot as a randomly chosen playlist from `assets/sounds/music/` and is blended with a crossfade (`updateMusicFades` in the Pixi `ticker`).
 - The game update runs on the Pixi `ticker` (requestAnimationFrame); key input is mirrored into `gameInput` in `gameloop.js`.
 - Collisions use AABB via `getBounds()` and work independently of the scene hierarchy (layers `starLayer`, `gameLayer`, `uiLayer`).
-- Persistent state is kept in `localStorage`: `starfox_control`, `starfox_difficulty`, `starfox_scores`, `starfox_highscore`, `starfox_name`.
+- Persistent state is kept in `localStorage`: `starfox_control`, `starfox_difficulty`, `starfox_scores`, `starfox_highscore`, `starfox_name`, `starfox_achievements`.
+- `init()` (end of `app.js`) loads `game-config.json`, applies it, builds the achievements menu, then runs the original boot steps. Gameplay parameters are read from `CONFIG` at runtime, so config edits take effect on the next load.
+- **Dev menu (level select):** press **`L`** to open/close an in-game development menu. It lets you jump directly to any sector (`devSelectSector`), pick the difficulty, grant each power-up, toggle invincibility, and clear all enemies. On touch devices (where there is no keyboard) append `?dev=1` to the URL — a small **DEV** button then appears on the start and pause screens. The chosen sector is stored in `devLevel` and used as the starting sector for the next round.
 
 ---
 
