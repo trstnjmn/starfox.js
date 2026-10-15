@@ -9,10 +9,11 @@ const app = new PIXI.Application({
 const _gameContainer = document.getElementById('game-container') || document.body;
 _gameContainer.appendChild(app.view);
 
+const bgLayer = new PIXI.Container();
 const starLayer = new PIXI.Container();
 const gameLayer = new PIXI.Container();
 const uiLayer = new PIXI.Container();
-app.stage.addChild(starLayer, gameLayer, uiLayer);
+app.stage.addChild(bgLayer, starLayer, gameLayer, uiLayer);
 
 const MARGIN = 26;
 const FALL_FACTOR = 0.06;
@@ -30,29 +31,134 @@ function computeScales() {
     uiScale = Math.max(0.68, Math.min(1, Math.min(w / 900, h / 760)));
 }
 
-const DIFFICULTIES = [
-    { name: 'Sehr leicht', spawnMs: 1600, maxLives: 8 },
-    { name: 'Leicht', spawnMs: 1400, maxLives: 7 },
-    { name: 'Normal', spawnMs: 1200, maxLives: 6 },
-    { name: 'Schwer', spawnMs: 1000, maxLives: 5 },
-    { name: 'Extrem', spawnMs: 800, maxLives: 4 }
-];
+const DEFAULT_CONFIG = {
+    tuning: {
+        fireCooldownMs: 165,
+        rapidFireCooldownMs: 85,
+        laserSpeed: 0.75,
+        powerupFirstDelayMs: 6000,
+        powerupRespawnMinMs: 8000,
+        powerupRespawnMaxMs: 14000,
+        speedRampStepMs: 1000,
+        speedRampAmount: 12,
+        minSpawnMs: 220
+    },
+    difficulties: [
+        { name: 'Sehr leicht', spawnMs: 1600, maxLives: 8 },
+        { name: 'Leicht', spawnMs: 1400, maxLives: 7 },
+        { name: 'Normal', spawnMs: 1200, maxLives: 6 },
+        { name: 'Schwer', spawnMs: 1000, maxLives: 5 },
+        { name: 'Extrem', spawnMs: 800, maxLives: 4 }
+    ],
+    enemies: {
+        ship1: { file: 'assets/ship1.png', damaged: 'assets/ship1_damaged.png', shoots: true, lateral: true, hp: 1, score: 1, crash: true, weight: 30 },
+        ship2: { file: 'assets/ship2.png', damaged: 'assets/ship2_damaged.png', shoots: true, lateral: true, hp: 1, score: 1, crash: true, weight: 30 },
+        rock: { file: 'assets/rock.png', hp: 1, score: 1, weight: 20 },
+        satellite: { file: 'assets/satellite.png', damaged: 'assets/satellite_damaged.png', hp: 1, score: 1, orbit: true, crash: true, weight: 14 },
+        bork: { file: 'assets/bork.png', damaged: 'assets/bork_damaged.png', hp: 2, score: 2, blast: true, weight: 6 }
+    },
+    powerups: {
+        weights: { rapid: 30, spread: 25, shield: 20, life: 12, slow: 6, invuln: 4, missile: 3 },
+        durationsMs: { rapid: 8000, spread: 8000, slow: 5000, invuln: 4000, missile: 8000 },
+        missileIntervalMs: 420,
+        slowFactor: 0.45
+    },
+    levels: [
+        { id: 'orbit', name: 'Orbit', advanceScore: 0, spawnMult: 1.0, speedMult: 1.0, starTint: '#ffffff', planetColor: '#3f6d8c' },
+        { id: 'asteroids', name: 'Asteroidenfeld', advanceScore: 20, spawnMult: 0.85, speedMult: 1.05, starTint: '#ffd9b3', planetColor: '#8c5a3f' },
+        { id: 'satellites', name: 'Satellitenguertel', advanceScore: 50, spawnMult: 0.75, speedMult: 1.1, starTint: '#bfe3ff', planetColor: '#3f8c6d' },
+        { id: 'deepspace', name: 'Tiefraum', advanceScore: 90, spawnMult: 0.65, speedMult: 1.15, starTint: '#d9c2ff', planetColor: '#5a3f8c' }
+    ],
+    achievements: [
+        { id: 'first_blood', name: 'Erster Abschuss', desc: 'Zerstoere den ersten Gegner' },
+        { id: 'first_powerup', name: 'Versorgt', desc: 'Sammle dein erstes Power-up' },
+        { id: 'score_50', name: 'Punktesammler', desc: 'Erreiche 50 Punkte' },
+        { id: 'score_150', name: 'Highscorer', desc: 'Erreiche 150 Punkte' },
+        { id: 'score_300', name: 'Punktejaeger', desc: 'Erreiche 300 Punkte' },
+        { id: 'score_600', name: 'Elite-Pilot', desc: 'Erreiche 600 Punkte' },
+        { id: 'score_1000', name: 'Legende', desc: 'Erreiche 1000 Punkte' },
+        { id: 'kills_10', name: 'Zehn Abschuesse', desc: 'Zerstoere 10 Gegner' },
+        { id: 'kills_25', name: 'Abschussmaschine', desc: 'Zerstoere 25 Gegner' },
+        { id: 'kills_50', name: 'Flottenzerstoerer', desc: 'Zerstoere 50 Gegner' },
+        { id: 'kills_100', name: 'Massenvernichtung', desc: 'Zerstoere 100 Gegner' },
+        { id: 'bork_5', name: 'Bork-Jaeger', desc: 'Zerstoere 5 Borks' },
+        { id: 'bork_15', name: 'Bork-Slayer', desc: 'Zerstoere 15 Borks' },
+        { id: 'bork_30', name: 'Bork-Legende', desc: 'Zerstoere 30 Borks' },
+        { id: 'combo_5', name: 'Serie', desc: '5 Abschuesse in Folge ohne Treffer' },
+        { id: 'combo_10', name: 'Unaufhaltsam', desc: '10 Abschuesse in Folge ohne Treffer' },
+        { id: 'combo_20', name: 'Kaum zu stoppen', desc: '20 Abschuesse in Folge ohne Treffer' },
+        { id: 'shots_100', name: 'Abzugsfreudig', desc: 'Feuere 100 Schuss ab' },
+        { id: 'shots_500', name: 'Dauerfeuer', desc: 'Feuere 500 Schuss ab' },
+        { id: 'shots_1000', name: 'Feuerwerk', desc: 'Feuere 1000 Schuss ab' },
+        { id: 'powerup_10', name: 'Aufgesammelt', desc: 'Sammle 10 Power-ups' },
+        { id: 'powerup_25', name: 'Power-Sammler', desc: 'Sammle 25 Power-ups' },
+        { id: 'powerup_50', name: 'Power-Junkie', desc: 'Sammle 50 Power-ups' },
+        { id: 'all_types', name: 'Bestandsaufnahme', desc: 'Sammle jeden Power-up-Typ' },
+        { id: 'shield_save_1', name: 'Schutzengel', desc: 'Ein Schild faengt einen Treffer ab' },
+        { id: 'shield_save_5', name: 'Schild-Profi', desc: 'Schilde fangen 5 Treffer ab' },
+        { id: 'missile_10', name: 'Raketenphysik', desc: 'Feuere 10 Raketen ab' },
+        { id: 'survive_30_nohit', name: 'Konzentration', desc: '30s ohne getroffen zu werden' },
+        { id: 'survive_60_nohit', name: 'Unberuehrt', desc: '60s ohne getroffen zu werden' },
+        { id: 'survivor_60', name: 'Ueberlebenskuenstler', desc: 'Ueberlebe 60 Sekunden' },
+        { id: 'survivor_180', name: 'Durchhaltevermoegen', desc: 'Ueberlebe 180 Sekunden' },
+        { id: 'life1_15', name: 'Letztes Aufgebot', desc: 'Ueberlebe 15s mit nur 1 Leben' },
+        { id: 'tough_3', name: 'Dickes Fell', desc: 'Kassiere 3 Treffer und kaempfe weiter' },
+        { id: 'sector_2', name: 'Entdecker', desc: 'Erreiche Sektor 2' },
+        { id: 'sector_3', name: 'Weltenbummler', desc: 'Erreiche Sektor 3' },
+        { id: 'sector_4', name: 'Tiefraum-Pilot', desc: 'Erreiche Sektor 4' },
+        { id: 'no_hit_sector', name: 'Perfekter Sektor', desc: 'Schliesse einen Sektor ohne Treffer ab' },
+        { id: 'no_hit_sector_3', name: 'Sauberer Flug', desc: '3 Sektoren ohne Treffer abschliessen' },
+        { id: 'perfect_5', name: 'Makellos', desc: '5 Sektoren ohne Treffer abschliessen' },
+        { id: 'levels_cleared_3', name: 'Sektor-Sammler', desc: 'Schliesse 3 Sektoren ab' }
+    ]
+};
+
+function isPlainObject(v) {
+    return v && typeof v === 'object' && !Array.isArray(v);
+}
+
+function deepMerge(base, override) {
+    if (Array.isArray(override)) return override.slice();
+    if (!isPlainObject(override)) return override;
+    const out = isPlainObject(base) ? Object.assign({}, base) : {};
+    for (const key of Object.keys(override)) {
+        out[key] = isPlainObject(override[key]) ? deepMerge(base ? base[key] : undefined, override[key]) : override[key];
+    }
+    return out;
+}
+
+let CONFIG = deepMerge({}, DEFAULT_CONFIG);
+
+async function loadConfig() {
+    try {
+        const res = await fetch('game-config.json', { cache: 'no-cache' });
+        if (res.ok) {
+            const cfg = await res.json();
+            CONFIG = deepMerge(DEFAULT_CONFIG, cfg);
+        }
+    } catch (e) { }
+}
+
+let DIFFICULTIES = CONFIG.difficulties;
+let ENEMY_KINDS = Object.keys(CONFIG.enemies);
+let ENEMY_DEFS = CONFIG.enemies;
+
+function applyConfig() {
+    DIFFICULTIES = CONFIG.difficulties;
+    ENEMY_DEFS = CONFIG.enemies;
+    ENEMY_KINDS = Object.keys(ENEMY_DEFS);
+    difficulty = Math.max(1, Math.min(DIFFICULTIES.length, difficulty));
+}
+
+let LEVELS = CONFIG.levels;
+
 let difficulty = 4;
 try {
     const d = parseInt(localStorage.getItem('starfox_difficulty') || '4', 10);
-    if (d >= 1 && d <= 5) difficulty = d;
+    if (d >= 1) difficulty = d;
 } catch (e) { }
 let maxLives = 5;
 const HUD_FONT = { fontFamily: 'courier new', fontSize: 22, fill: 0xffffff, fontWeight: 'bold' };
-
-const ENEMY_KINDS = ['ship1', 'ship2', 'rock', 'satellite', 'bork'];
-const ENEMY_DEFS = {
-    ship1: { file: 'assets/ship1.png', damaged: 'assets/ship1_damaged.png', shoots: true, lateral: true, hp: 1, score: 1, crash: true },
-    ship2: { file: 'assets/ship2.png', damaged: 'assets/ship2_damaged.png', shoots: true, lateral: true, hp: 1, score: 1, crash: true },
-    rock: { file: 'assets/rock.png', hp: 1, score: 1 },
-    satellite: { file: 'assets/satellite.png', damaged: 'assets/satellite_damaged.png', hp: 1, score: 1, orbit: true, crash: true },
-    bork: { file: 'assets/bork.png', damaged: 'assets/bork_damaged.png', hp: 2, score: 2, blast: true }
-};
 
 let gameSpeed = 1000;
 let score = 0;
@@ -72,7 +178,7 @@ if (isTouchDevice) controlMode = 'mouse';
 let savedName = '';
 try { savedName = (localStorage.getItem('starfox_name') || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 5); } catch (e) { }
 
-let boards = loadBoards();
+let boards = {};
 let awaitingName = false;
 
 let mouseX = app.screen.width / 2;
@@ -84,12 +190,52 @@ let arwingBlinkT = 0;
 let rapidFireMs = 0;
 let spreadShotMs = 0;
 let shieldActive = false;
+let slowMs = 0;
+let invulnMs = 0;
+let missileMs = 0;
+let missileCooldown = 0;
 
 let spawnAccum = 0;
 let diffAccum = 0;
 let fireCooldown = 0;
 let fireBlocked = false;
 let powerupTimer = 6000;
+
+let currentLevel = 0;
+let levelBannerT = 0;
+
+let devLevel = 0;
+let devInvincible = false;
+let devMenuOpen = false;
+let devPrevPaused = false;
+let devOpenedFromPause = false;
+const DEV_MODE = (typeof location !== 'undefined') && new URLSearchParams(location.search).has('dev');
+
+let unlockedAchv = {};
+let achvList = [];
+
+function freshStats() {
+    return {
+        kills: 0,
+        borks: 0,
+        powerups: 0,
+        timeMs: 0,
+        hitSinceLevel: false,
+        shots: 0,
+        hitsTaken: 0,
+        shieldsUsed: 0,
+        missilesFired: 0,
+        noHitMs: 0,
+        bestNoHitMs: 0,
+        levelsCleared: 0,
+        perfectSectors: 0,
+        combo: 0,
+        bestCombo: 0,
+        life1Ms: 0,
+        typesCollected: {}
+    };
+}
+let stats = freshStats();
 
 let shakeTime = 0;
 let shakeDur = 1;
@@ -99,6 +245,7 @@ const shipList = [];
 const laserList = [];
 const enemyLasers = [];
 const powerupList = [];
+const missileList = [];
 const stars = [];
 
 const gameStartSound = new Audio('assets/sounds/game_start.mp3');
@@ -410,6 +557,24 @@ soundButton.cursor = 'pointer';
 soundButton.on('pointerdown', toggleMute);
 uiLayer.addChild(soundButton);
 
+const levelText = new PIXI.Text('', { fontFamily: 'courier new', fontSize: 18, fill: 0x9ad0ff, fontWeight: 'bold' });
+levelText.anchor.set(0.5, 0);
+uiLayer.addChild(levelText);
+
+const powerupText = new PIXI.Text('', { fontFamily: 'courier new', fontSize: 18, fill: 0xffdd66, fontWeight: 'bold' });
+powerupText.anchor.set(0.5, 0);
+uiLayer.addChild(powerupText);
+
+const bgPlanet = new PIXI.Graphics();
+(function buildPlanet() {
+    bgPlanet.beginFill(0xffffff).drawCircle(0, 0, 200).endFill();
+    bgPlanet.beginFill(0x000000, 0.16).drawCircle(-60, -40, 46).endFill();
+    bgPlanet.beginFill(0x000000, 0.12).drawCircle(70, 50, 32).endFill();
+    bgPlanet.beginFill(0x000000, 0.10).drawCircle(20, 110, 24).endFill();
+})();
+bgPlanet.alpha = 0.5;
+bgLayer.addChild(bgPlanet);
+
 const startContainer = new PIXI.Container();
 const startTitle = new PIXI.Text('STAR FOX JS', {
     fontFamily: 'courier new', fontSize: 72, fill: 0xffffff, fontWeight: 'bold'
@@ -423,6 +588,7 @@ const startMouseBtn = makeButton('Maus', 0xffffff, () => chooseControl('mouse'))
 const startKeyBtn = makeButton('Tastatur', 0xffffff, () => chooseControl('keyboard'));
 const startButton = makeBigButton('START', 0x66ff99, () => startGame());
 const startMusicBtn = makeButton('Musik', 0x66ccff, () => openMusicMenu());
+const startAchvBtn = makeButton('Erfolge', 0xffcc66, () => openAchievementsMenu());
 const startHint = new PIXI.Text('Tastatur: Pfeiltasten/WASD · Leertaste feuert · Maus: Zeigen + Klick', {
     fontFamily: 'courier new', fontSize: 18, fill: 0xbbbbbb
 });
@@ -436,7 +602,7 @@ const startMusicHint = new PIXI.Text('Klick oder Taste drücken, um die Musik zu
 });
 startMusicHint.anchor.set(0.5);
 startMusicHint.visible = false;
-startContainer.addChild(startTitle, startSubtitle, startMouseBtn, startKeyBtn, startButton, startMusicBtn, startHint, startScore, startMusicHint);
+startContainer.addChild(startTitle, startSubtitle, startMouseBtn, startKeyBtn, startButton, startMusicBtn, startAchvBtn, startHint, startScore, startMusicHint);
 uiLayer.addChild(startContainer);
 
 const musicContainer = new PIXI.Container();
@@ -462,6 +628,142 @@ musicContainer.addChild(musicTitle, musicSubtitle, musicStopBtn, musicBackBtn, m
 musicContainer.visible = false;
 uiLayer.addChild(musicContainer);
 
+const achvContainer = new PIXI.Container();
+const achvTitle = new PIXI.Text('ERFOLGE', {
+    fontFamily: 'courier new', fontSize: 54, fill: 0xffffff, fontWeight: 'bold'
+});
+achvTitle.anchor.set(0.5);
+const achvSubtitle = new PIXI.Text('', {
+    fontFamily: 'courier new', fontSize: 24, fill: 0xffcc66, fontWeight: 'bold'
+});
+achvSubtitle.anchor.set(0.5);
+const achvBackBtn = makeButton('Zurück', 0xffffff, () => closeAchievementsMenu());
+const achvResetBtn = makeButton('Zurücksetzen', 0xff6666, () => onAchvResetClick());
+const achvPrevBtn = makeButton('◀', 0x66ccff, () => changeAchvPage(-1));
+const achvNextBtn = makeButton('▶', 0x66ccff, () => changeAchvPage(1));
+const achvPageLabel = new PIXI.Text('', {
+    fontFamily: 'courier new', fontSize: 20, fill: 0xbbbbbb, fontWeight: 'bold'
+});
+achvPageLabel.anchor.set(0.5);
+const achvBackHint = new PIXI.Text('Erfolge werden automatisch gespeichert', {
+    fontFamily: 'courier new', fontSize: 18, fill: 0xbbbbbb
+});
+achvBackHint.anchor.set(0.5);
+achvContainer.addChild(achvTitle, achvSubtitle, achvPrevBtn, achvNextBtn, achvPageLabel, achvResetBtn, achvBackBtn, achvBackHint);
+achvContainer.visible = false;
+uiLayer.addChild(achvContainer);
+
+const startDevBtn = makeButton('DEV', 0x66ff99, () => openDevMenu());
+startDevBtn.visible = false;
+startContainer.addChild(startDevBtn);
+
+const devContainer = new PIXI.Container();
+const devTitle = new PIXI.Text('DEV · LEVELWECHSEL', {
+    fontFamily: 'courier new', fontSize: 40, fill: 0x66ff99, fontWeight: 'bold'
+});
+devTitle.anchor.set(0.5);
+const devHint = new PIXI.Text('Taste L schließt dieses Menü', {
+    fontFamily: 'courier new', fontSize: 16, fill: 0xbbbbbb
+});
+devHint.anchor.set(0.5);
+let devSectorButtons = [];
+let devPowerButtons = [];
+const devInvBtn = makeButton('Unverwundbar: AUS', 0xffcc66, () => toggleDevInvincible());
+const devClearBtn = makeButton('Gegner löschen', 0xff9999, () => devClearEnemies());
+const devCloseBtn = makeButton('Schließen', 0xffffff, () => closeDevMenu());
+const devDiffRow = buildDifficultyRow();
+devContainer.addChild(devTitle, devHint, devInvBtn, devClearBtn, devCloseBtn, devDiffRow);
+devContainer.visible = false;
+uiLayer.addChild(devContainer);
+
+function buildDevMenu() {
+    devSectorButtons = LEVELS.map((lv, i) => {
+        const b = makeButton('SEKTOR ' + (i + 1) + ' · ' + lv.name, 0x66ccff, () => devSelectSector(i));
+        b.style.fontSize = 20;
+        devContainer.addChild(b);
+        return b;
+    });
+    devPowerButtons = Object.keys(POWERUP_STYLES).map(t => {
+        const b = makeButton(POWERUP_LABELS[t] || t, 0xaaaaff, () => { applyPowerup(t); updateHud(); });
+        b.style.fontSize = 16;
+        devContainer.addChild(b);
+        return b;
+    });
+    updateDevMenu();
+}
+
+const POWERUP_LABELS = {
+    rapid: 'Rapid', spread: 'Spread', shield: 'Schild', life: '1UP',
+    slow: 'Slow', invuln: 'Invuln', missile: 'Rakete'
+};
+
+function devSelectSector(i) {
+    devLevel = Math.max(0, Math.min(LEVELS.length - 1, i));
+    currentLevel = devLevel;
+    stats.hitSinceLevel = false;
+    applyLevelVisuals();
+    updateDevMenu();
+    updateStatusHud();
+    if (!showStart) showLevelBanner(currentLevel);
+    playConfirm();
+}
+
+function toggleDevInvincible() {
+    devInvincible = !devInvincible;
+    updateDevMenu();
+    playConfirm();
+}
+
+function devClearEnemies() {
+    destroyAll(shipList);
+    destroyAll(enemyLasers);
+    playConfirm();
+}
+
+function updateDevMenu() {
+    devSectorButtons.forEach((b, i) => {
+        b._base = i === currentLevel ? 0x66ff99 : 0x66ccff;
+        b.style.fill = b._base;
+    });
+    devInvBtn.text = 'Unverwundbar: ' + (devInvincible ? 'AN' : 'AUS');
+    devInvBtn._base = devInvincible ? 0x66ff99 : 0xffcc66;
+    devInvBtn.style.fill = devInvBtn._base;
+}
+
+function openDevMenu() {
+    if (devMenuOpen) return;
+    devMenuOpen = true;
+    devPrevPaused = gamePaused;
+    devOpenedFromPause = pauseContainer.visible;
+    startContainer.visible = false;
+    pauseContainer.visible = false;
+    musicContainer.visible = false;
+    achvContainer.visible = false;
+    if (!showStart) gamePaused = true;
+    devContainer.visible = true;
+    updateDevMenu();
+    playConfirm();
+    layoutUI();
+}
+
+function closeDevMenu() {
+    if (!devMenuOpen) return;
+    devMenuOpen = false;
+    devContainer.visible = false;
+    if (showStart) startContainer.visible = true;
+    if (!showStart) {
+        gamePaused = devPrevPaused;
+        pauseContainer.visible = devOpenedFromPause;
+    }
+    playConfirm();
+    layoutUI();
+}
+
+function toggleDevMenu() {
+    if (devMenuOpen) closeDevMenu();
+    else openDevMenu();
+}
+
 const pauseContainer = new PIXI.Container();
 const pauseTitle = new PIXI.Text('Pause', {
     fontFamily: 'courier new', fontSize: 54, fill: 0xffffff, fontWeight: 'bold'
@@ -476,11 +778,13 @@ const pauseKeyBtn = makeButton('Tastatur', 0xffffff, () => chooseControl('keyboa
 const pauseResumeBtn = makeButton('Weiter', 0x66ff99, () => setPaused(false));
 const pauseRestartBtn = makeButton('Neustart', 0xffcc66, () => restartGame());
 const pauseMenuBtn = makeButton('Hauptmenü', 0xff9999, () => goToMainMenu());
+const pauseDevBtn = makeButton('DEV', 0x66ff99, () => openDevMenu());
+pauseDevBtn.visible = false;
 const pauseHint = new PIXI.Text('P / Escape = Weiter', {
     fontFamily: 'courier new', fontSize: 18, fill: 0xbbbbbb
 });
 pauseHint.anchor.set(0.5);
-pauseContainer.addChild(pauseTitle, pauseControlLabel, pauseMouseBtn, pauseKeyBtn, pauseResumeBtn, pauseRestartBtn, pauseMenuBtn, pauseHint);
+pauseContainer.addChild(pauseTitle, pauseControlLabel, pauseMouseBtn, pauseKeyBtn, pauseResumeBtn, pauseRestartBtn, pauseMenuBtn, pauseDevBtn, pauseHint);
 pauseContainer.visible = false;
 uiLayer.addChild(pauseContainer);
 
@@ -625,6 +929,8 @@ document.addEventListener('touchcancel', endTouch, { passive: false });
 
 document.addEventListener('keydown', (e) => {
     if (awaitingName) return;
+    if (e.key === 'l' || e.key === 'L') { toggleDevMenu(); return; }
+    if (devMenuOpen) return;
     if (e.key === 'p' || e.key === 'P' || e.key === 'Escape') togglePause();
     if (e.key === 'm' || e.key === 'M') toggleMute();
     if ((e.key === 'r' || e.key === 'R') && gameOver) restartGame();
@@ -744,6 +1050,7 @@ function updateMusicMenuState() {
 function openMusicMenu() {
     musicMenuOpen = true;
     startContainer.visible = false;
+    achvContainer.visible = false;
     musicContainer.visible = true;
     musicPreviewId = 'menu';
     if (!muted) fadeInMusic('menu');
@@ -756,6 +1063,7 @@ function closeMusicMenu() {
     musicPreviewId = null;
     musicMenuOpen = false;
     musicContainer.visible = false;
+    achvContainer.visible = false;
     startContainer.visible = true;
     maybePlayMenuMusic();
     updateMusicMenuState();
@@ -764,7 +1072,7 @@ function closeMusicMenu() {
 }
 
 function currentDifficulty() {
-    return DIFFICULTIES[Math.max(1, Math.min(5, difficulty)) - 1];
+    return DIFFICULTIES[Math.max(1, Math.min(DIFFICULTIES.length, difficulty)) - 1];
 }
 
 function buildDifficultyRow() {
@@ -783,7 +1091,7 @@ function buildDifficultyRow() {
     right.anchor.set(0.5);
     right.eventMode = 'static';
     right.cursor = 'pointer';
-    right.on('pointerover', () => { if (difficulty < 5) right.style.fill = 0x66ff99; });
+    right.on('pointerover', () => { if (difficulty < DIFFICULTIES.length) right.style.fill = 0x66ff99; });
     right.on('pointerout', () => right.style.fill = 0xffffff);
     right.on('pointerdown', () => changeDifficulty(1));
 
@@ -813,11 +1121,11 @@ function buildDifficultyRow() {
 
 function updateDifficultyUI() {
     const d = currentDifficulty();
-    for (const row of [startDiffRow, pauseDiffRow]) {
+    for (const row of [startDiffRow, pauseDiffRow, devDiffRow]) {
         row._label.text = 'Stufe ' + difficulty + ' · ' + d.name;
         row._desc.text = 'Spawn: ' + d.spawnMs + ' ms · Max. Leben: ' + d.maxLives;
         row._left.alpha = difficulty > 1 ? 1 : 0.3;
-        row._right.alpha = difficulty < 5 ? 1 : 0.3;
+        row._right.alpha = difficulty < DIFFICULTIES.length ? 1 : 0.3;
     }
 }
 
@@ -832,7 +1140,7 @@ function applyDifficulty() {
 }
 
 function changeDifficulty(delta) {
-    difficulty = Math.max(1, Math.min(5, difficulty + delta));
+    difficulty = Math.max(1, Math.min(DIFFICULTIES.length, difficulty + delta));
     try { localStorage.setItem('starfox_difficulty', String(difficulty)); } catch (e) { }
     applyDifficulty();
     playConfirm();
@@ -946,6 +1254,8 @@ function refreshHudVisibility() {
     livesText.visible = !showStart;
     scoreText.visible = !showStart;
     highscoreText.visible = !showStart;
+    levelText.visible = !showStart;
+    powerupText.visible = !showStart;
     logo.visible = !showStart;
 }
 
@@ -1055,8 +1365,12 @@ function moveArwing(dt) {
 }
 
 function spawnShip() {
-    const kind = ENEMY_KINDS[random(0, ENEMY_KINDS.length - 1)];
+    const weights = {};
+    for (const k of ENEMY_KINDS) weights[k] = (ENEMY_DEFS[k].weight || 1);
+    const kind = weightedPick(weights);
     const def = ENEMY_DEFS[kind];
+    const lvl = LEVELS[currentLevel] || LEVELS[0];
+    const speedMult = lvl.speedMult || 1;
     const ship = PIXI.Sprite.from(def.file);
     ship.anchor.set(0.5);
     ship.scale.set(kind === 'rock' ? random(4, 11) * worldScale / 100 : 0.07 * worldScale);
@@ -1071,9 +1385,9 @@ function spawnShip() {
     ship.shoots = !!def.shoots;
     ship.canBlast = !!def.blast;
     ship.scoreValue = def.score;
-    ship.vy = random(2, 5) * FALL_FACTOR;
+    ship.vy = random(2, 5) * FALL_FACTOR * speedMult;
     if (def.lateral) {
-        ship.vx = (random(0, 1) ? 1 : -1) * random(1, 3) * FALL_FACTOR;
+        ship.vx = (random(0, 1) ? 1 : -1) * random(1, 3) * FALL_FACTOR * speedMult;
         ship.targetVx = ship.vx;
         ship.wanderTimer = random(400, 1400);
     } else {
@@ -1086,11 +1400,11 @@ function spawnShip() {
         const radius = random(50, 120);
         const minC = radius + 30;
         const maxC = Math.max(minC, app.screen.width - radius - 30);
-        ship.vy = random(1, 2) * FALL_FACTOR;
+        ship.vy = random(1, 2) * FALL_FACTOR * speedMult;
         ship.orbitRadius = radius;
         ship.centerX = random(minC, maxC);
         ship.orbitAngle = random(0, 628) / 100;
-        ship.orbitSpeed = random(15, 30) / 10000;
+        ship.orbitSpeed = random(15, 30) / 10000 * speedMult;
         ship.x = ship.centerX + Math.cos(ship.orbitAngle) * radius;
         ship.vx = 0;
     }
@@ -1100,18 +1414,20 @@ function spawnShip() {
 }
 
 function updateShips(dt) {
+    if (slowMs > 0) dt *= CONFIG.powerups.slowFactor;
     for (let i = shipList.length - 1; i >= 0; i--) {
         const s = shipList[i];
         if (!s.teleporting) s.y += s.vy * dt;
 
         if (s.crashing) {
-            s.vy = Math.min(s.vy + 0.0012 * dt, 1.6);
+            s.dyingT = (s.dyingT || 0) + dt;
+            s.alpha = Math.max(0.3, 1 - s.dyingT / 250);
+            s.vy = Math.min(s.vy + 0.0004 * dt, 0.7);
             s.rotation += s.spinSpeed * dt;
             s.wobblePhase += s.wobbleFreq * dt;
             s.x += Math.sin(s.wobblePhase) * s.wobbleAmp * dt;
             if (s.x < 20) s.x = 20;
             if (s.x > app.screen.width - 20) s.x = app.screen.width - 20;
-            if (s.noHitT > 0) s.noHitT -= dt;
         } else if (s.kind === 'rock') {
             s.rotation += s.spinSpeed * dt;
         } else if (s.kind === 'satellite') {
@@ -1162,7 +1478,7 @@ function updateShips(dt) {
             continue;
         }
 
-        if (!gameOver && (s.noHitT || 0) <= 0 && hits(s, arwing)) {
+        if (!gameOver && !s.crashing && (s.noHitT || 0) <= 0 && hits(s, arwing)) {
             destroy(s, shipList);
             if (arwingInvuln <= 0) onPlayerHit();
         }
@@ -1184,6 +1500,7 @@ function fireEnemyLaser(ship) {
 }
 
 function updateEnemyLasers(dt) {
+    if (slowMs > 0) dt *= CONFIG.powerups.slowFactor;
     for (let i = enemyLasers.length - 1; i >= 0; i--) {
         const l = enemyLasers[i];
         l.y += l.vy * dt;
@@ -1203,10 +1520,11 @@ function updateEnemyLasers(dt) {
 
 function fireLaser() {
     startGameMusic();
+    stats.shots++;
     playSound('assets/sounds/laser' + random(1, 2) + '.mp3', 0.5);
     const spread = spreadShotMs > 0;
     const angles = spread ? [-0.22, 0, 0.22] : [0];
-    const speed = 0.75;
+    const speed = CONFIG.tuning.laserSpeed;
 
     for (const a of angles) {
         const laser = PIXI.Sprite.from('assets/laser.png');
@@ -1220,6 +1538,76 @@ function fireLaser() {
         gameLayer.addChild(laser);
         laserList.push(laser);
     }
+
+    if (missileMs > 0 && missileCooldown <= 0) {
+        missileCooldown = CONFIG.powerups.missileIntervalMs;
+        spawnHomingMissile();
+    }
+}
+
+function findNearestShip(x, y) {
+    let best = null;
+    let bestD = Infinity;
+    for (const s of shipList) {
+        if (s.destroyed || s.teleporting) continue;
+        const d = Math.hypot(s.x - x, s.y - y);
+        if (d < bestD) { bestD = d; best = s; }
+    }
+    return best;
+}
+
+function spawnHomingMissile() {
+    const m = PIXI.Sprite.from('assets/laser.png');
+    m.anchor.set(0.5);
+    m.scale.set(0.04 * worldScale);
+    m.tint = 0xff8844;
+    m.x = arwing.x;
+    m.y = arwing.y - 30;
+    m.speed = 0.6;
+    m.vx = 0;
+    m.vy = -m.speed;
+    m.target = findNearestShip(m.x, m.y);
+    gameLayer.addChild(m);
+    missileList.push(m);
+    stats.missilesFired++;
+    playSound('assets/sounds/laser1.mp3', 0.35);
+}
+
+function updateMissiles(dt) {
+    for (let i = missileList.length - 1; i >= 0; i--) {
+        const m = missileList[i];
+        if (!m.target || m.target.destroyed || !m.target.parent) m.target = findNearestShip(m.x, m.y);
+
+        const cur = Math.atan2(m.vy, m.vx);
+        let na = cur;
+        if (m.target) {
+            const want = Math.atan2(m.target.y - m.y, m.target.x - m.x);
+            let da = want - cur;
+            while (da > Math.PI) da -= Math.PI * 2;
+            while (da < -Math.PI) da += Math.PI * 2;
+            na = cur + Math.max(-0.16, Math.min(0.16, da));
+        }
+        m.vx = Math.cos(na) * m.speed;
+        m.vy = Math.sin(na) * m.speed;
+        m.x += m.vx * dt;
+        m.y += m.vy * dt;
+        m.rotation = na + Math.PI / 2;
+
+        if (m.y < -40 || m.y > app.screen.height + 40 || m.x < -40 || m.x > app.screen.width + 40) {
+            destroy(m, missileList);
+            continue;
+        }
+
+        for (let j = shipList.length - 1; j >= 0; j--) {
+            if (shipList[j].crashing) continue;
+            if (hits(m, shipList[j])) {
+                hitShip(shipList[j]);
+                spawnExplosion(m.x, m.y, 0.06);
+                destroy(m, missileList);
+                break;
+            }
+        }
+    }
 }
 
 function handleFiring(dt) {
@@ -1229,7 +1617,7 @@ function handleFiring(dt) {
     }
     fireCooldown -= dt;
     if (!(mousePressed || gameInput.fire) || fireCooldown > 0) return;
-    fireCooldown = rapidFireMs > 0 ? 85 : 165;
+    fireCooldown = rapidFireMs > 0 ? CONFIG.tuning.rapidFireCooldownMs : CONFIG.tuning.fireCooldownMs;
     fireLaser();
 }
 
@@ -1245,6 +1633,7 @@ function updateLasers(dt) {
         }
 
         for (let j = shipList.length - 1; j >= 0; j--) {
+            if (shipList[j].crashing) continue;
             if (hits(l, shipList[j])) {
                 hitShip(shipList[j]);
                 destroy(l, laserList);
@@ -1260,7 +1649,7 @@ function hitShip(ship) {
     if (ship.crash) {
         ship.crashing = true;
         ship.shoots = false;
-        ship.noHitT = 450;
+        ship.dyingT = 0;
         ship.spinSpeed = (random(0, 1) ? 1 : -1) * random(3, 8) / 10000;
         ship.wobbleAmp = random(2, 4) * FALL_FACTOR;
         ship.wobbleFreq = random(2, 5) / 1000;
@@ -1296,7 +1685,12 @@ function onShipKilled(ship) {
     destroy(ship, shipList);
     if (big && !gameOver) spawnBlast(x, y, 95 * worldScale);
     score += ship.scoreValue || 1;
+    stats.kills++;
+    if (big) stats.borks++;
+    stats.combo++;
+    if (stats.combo > stats.bestCombo) stats.bestCombo = stats.combo;
     updateHud();
+    checkAchievements();
 }
 
 function spawnBlast(x, y, radius) {
@@ -1412,8 +1806,34 @@ const POWERUP_SYMBOLS = {
     rapid: ['####.', '#...#', '####.', '#..#.', '#...#'],
     spread: ['.####', '#....', '.###.', '....#', '####.'],
     shield: ['####.', '#...#', '#...#', '#...#', '####.'],
-    life: ['..#..', '..#..', '#####', '..#..', '..#..']
+    life: ['..#..', '..#..', '#####', '..#..', '..#..'],
+    slow: ['#####', '#...#', '.###.', '#...#', '#####'],
+    invuln: ['..#..', '.###.', '#####', '.#.#.', '#...#'],
+    missile: ['...#.', '..###', '#####', '..###', '...#.']
 };
+
+const POWERUP_STYLES = {
+    rapid: { color: 0xffcc00 },
+    spread: { color: 0x00ccff },
+    shield: { color: 0x66ff99 },
+    life: { color: 0xff4466 },
+    slow: { color: 0xaa66ff },
+    invuln: { color: 0x66ffdd },
+    missile: { color: 0xff8844 }
+};
+
+function weightedPick(weights) {
+    const keys = Object.keys(weights);
+    let total = 0;
+    for (const k of keys) total += (weights[k] || 0);
+    if (total <= 0) return keys[0];
+    let r = Math.random() * total;
+    for (const k of keys) {
+        r -= (weights[k] || 0);
+        if (r <= 0) return k;
+    }
+    return keys[keys.length - 1];
+}
 
 function mixColor(a, b, t) {
     const ar = (a >> 16) & 255, ag = (a >> 8) & 255, ab = a & 255;
@@ -1449,17 +1869,12 @@ function buildPixelPowerup(color, symbol) {
 }
 
 function spawnPowerup() {
-    const defs = [
-        { type: 'rapid', color: 0xffcc00, symbol: POWERUP_SYMBOLS.rapid },
-        { type: 'spread', color: 0x00ccff, symbol: POWERUP_SYMBOLS.spread },
-        { type: 'shield', color: 0x66ff99, symbol: POWERUP_SYMBOLS.shield }
-    ];
-    const def = random(0, 99) < 15
-        ? { type: 'life', color: 0xff4466, symbol: POWERUP_SYMBOLS.life }
-        : defs[random(0, defs.length - 1)];
+    const type = weightedPick(CONFIG.powerups.weights);
+    const style = POWERUP_STYLES[type] || POWERUP_STYLES.rapid;
+    const symbol = POWERUP_SYMBOLS[type] || POWERUP_SYMBOLS.rapid;
     const c = new PIXI.Container();
-    c.addChild(buildPixelPowerup(def.color, def.symbol));
-    c.powerType = def.type;
+    c.addChild(buildPixelPowerup(style.color, symbol));
+    c.powerType = type;
     c.x = random(40, Math.max(41, app.screen.width - 40));
     c.y = -30;
     c.vy = 0.13;
@@ -1468,13 +1883,20 @@ function spawnPowerup() {
 }
 
 function applyPowerup(type) {
-    if (type === 'rapid') rapidFireMs = 8000;
-    else if (type === 'spread') spreadShotMs = 8000;
+    const dur = CONFIG.powerups.durationsMs;
+    if (type === 'rapid') rapidFireMs = dur.rapid;
+    else if (type === 'spread') spreadShotMs = dur.spread;
     else if (type === 'shield') shieldActive = true;
+    else if (type === 'slow') slowMs = dur.slow;
+    else if (type === 'invuln') invulnMs = dur.invuln;
+    else if (type === 'missile') missileMs = dur.missile;
     else if (type === 'life') {
         lives = Math.min(maxLives, lives + 1);
         updateHud();
     }
+    stats.powerups++;
+    stats.typesCollected[type] = true;
+    checkAchievements();
 }
 
 function updatePowerups(dt) {
@@ -1498,11 +1920,276 @@ function updatePowerups(dt) {
     }
 }
 
+function parseHexColor(str, fallback) {
+    if (typeof str !== 'string') return fallback;
+    const v = parseInt(str.replace('#', ''), 16);
+    return isNaN(v) ? fallback : v;
+}
+
+function applyLevelVisuals() {
+    const lv = LEVELS[currentLevel] || LEVELS[0];
+    starLayer.tint = parseHexColor(lv.starTint, 0xffffff);
+    bgPlanet.tint = parseHexColor(lv.planetColor, 0x3f6d8c);
+}
+
+function checkLevelAdvance() {
+    let target = currentLevel;
+    for (let i = LEVELS.length - 1; i >= 0; i--) {
+        if (score >= (LEVELS[i].advanceScore || 0)) { target = i; break; }
+    }
+    if (target > currentLevel) {
+        stats.levelsCleared++;
+        if (!stats.hitSinceLevel) stats.perfectSectors++;
+        currentLevel = target;
+        stats.hitSinceLevel = false;
+        applyLevelVisuals();
+        showLevelBanner(currentLevel);
+        checkAchievements();
+    }
+}
+
+function showLevelBanner(level) {
+    const lv = LEVELS[level] || LEVELS[0];
+    const t = new PIXI.Text('SEKTOR ' + (level + 1) + ' · ' + lv.name, {
+        fontFamily: 'courier new', fontSize: 46, fill: 0xffffff, fontWeight: 'bold'
+    });
+    t.anchor.set(0.5);
+    t.x = app.screen.width / 2;
+    t.y = app.screen.height * 0.32;
+    t.scale.set(uiScale);
+    uiLayer.addChild(t);
+    playSound('assets/sounds/level_up.mp3', 0.6);
+    const start = performance.now();
+    const dur = 1800;
+    const step = () => {
+        const p = (performance.now() - start) / dur;
+        t.alpha = p < 0.15 ? p / 0.15 : (p > 0.7 ? Math.max(0, (1 - p) / 0.3) : 1);
+        if (p < 1) requestAnimationFrame(step);
+        else { if (t.parent) t.parent.removeChild(t); t.destroy(); }
+    };
+    requestAnimationFrame(step);
+}
+
+function updateStatusHud() {
+    const parts = [];
+    if (rapidFireMs > 0) parts.push('RAPID ' + Math.ceil(rapidFireMs / 1000) + 's');
+    if (spreadShotMs > 0) parts.push('SPREAD ' + Math.ceil(spreadShotMs / 1000) + 's');
+    if (slowMs > 0) parts.push('SLOW ' + Math.ceil(slowMs / 1000) + 's');
+    if (invulnMs > 0) parts.push('INVULN ' + Math.ceil(invulnMs / 1000) + 's');
+    if (missileMs > 0) parts.push('RAKETEN ' + Math.ceil(missileMs / 1000) + 's');
+    if (shieldActive) parts.push('SCHILD');
+    const s = parts.join('   ');
+    if (powerupText.text !== s) powerupText.text = s;
+
+    const lv = LEVELS[currentLevel] || LEVELS[0];
+    const ls = 'SEKTOR ' + (currentLevel + 1) + ' · ' + lv.name;
+    if (levelText.text !== ls) levelText.text = ls;
+}
+
+function loadAchievements() {
+    try {
+        const raw = JSON.parse(localStorage.getItem('starfox_achievements') || '{}');
+        if (raw && typeof raw === 'object' && !Array.isArray(raw)) return raw;
+    } catch (e) { }
+    return {};
+}
+
+function saveAchievements() {
+    try { localStorage.setItem('starfox_achievements', JSON.stringify(unlockedAchv)); } catch (e) { }
+}
+
+function tryUnlock(id) {
+    if (unlockedAchv[id]) return;
+    unlockedAchv[id] = true;
+    saveAchievements();
+    const def = CONFIG.achievements.find(a => a.id === id);
+    showToast('ERFOLG: ' + (def ? def.name : id));
+    updateAchievementsMenu();
+}
+
+const ACHIEVEMENT_CHECKS = {
+    first_blood: () => stats.kills >= 1,
+    first_powerup: () => stats.powerups >= 1,
+    score_50: () => score >= 50,
+    score_150: () => score >= 150,
+    score_300: () => score >= 300,
+    score_600: () => score >= 600,
+    score_1000: () => score >= 1000,
+    kills_10: () => stats.kills >= 10,
+    kills_25: () => stats.kills >= 25,
+    kills_50: () => stats.kills >= 50,
+    kills_100: () => stats.kills >= 100,
+    bork_5: () => stats.borks >= 5,
+    bork_15: () => stats.borks >= 15,
+    bork_30: () => stats.borks >= 30,
+    combo_5: () => stats.bestCombo >= 5,
+    combo_10: () => stats.bestCombo >= 10,
+    combo_20: () => stats.bestCombo >= 20,
+    shots_100: () => stats.shots >= 100,
+    shots_500: () => stats.shots >= 500,
+    shots_1000: () => stats.shots >= 1000,
+    powerup_10: () => stats.powerups >= 10,
+    powerup_25: () => stats.powerups >= 25,
+    powerup_50: () => stats.powerups >= 50,
+    all_types: () => Object.keys(POWERUP_STYLES).every(t => stats.typesCollected[t]),
+    shield_save_1: () => stats.shieldsUsed >= 1,
+    shield_save_5: () => stats.shieldsUsed >= 5,
+    missile_10: () => stats.missilesFired >= 10,
+    survive_30_nohit: () => stats.bestNoHitMs >= 30000,
+    survive_60_nohit: () => stats.bestNoHitMs >= 60000,
+    survivor_60: () => stats.timeMs >= 60000,
+    survivor_180: () => stats.timeMs >= 180000,
+    life1_15: () => stats.life1Ms >= 15000,
+    tough_3: () => stats.hitsTaken >= 3 && lives > 0 && !gameOver,
+    sector_2: () => currentLevel >= 1,
+    sector_3: () => currentLevel >= 2,
+    sector_4: () => currentLevel >= 3,
+    no_hit_sector: () => stats.perfectSectors >= 1,
+    no_hit_sector_3: () => stats.perfectSectors >= 3,
+    perfect_5: () => stats.perfectSectors >= 5,
+    levels_cleared_3: () => stats.levelsCleared >= 3
+};
+
+function checkAchievements() {
+    for (const id in ACHIEVEMENT_CHECKS) {
+        if (!unlockedAchv[id] && ACHIEVEMENT_CHECKS[id]()) tryUnlock(id);
+    }
+}
+
+function showToast(text) {
+    const t = new PIXI.Text(text, {
+        fontFamily: 'courier new', fontSize: 24, fill: 0xffdd44, fontWeight: 'bold'
+    });
+    t.anchor.set(0.5);
+    t.x = app.screen.width / 2;
+    t.y = app.screen.height * 0.2;
+    t.scale.set(uiScale);
+    uiLayer.addChild(t);
+    const start = performance.now();
+    const dur = 3000;
+    const baseY = app.screen.height * 0.2;
+    const step = () => {
+        const p = (performance.now() - start) / dur;
+        t.alpha = p < 0.12 ? p / 0.12 : (p > 0.75 ? Math.max(0, (1 - p) / 0.25) : 1);
+        t.y = baseY - Math.min(1, p) * 24;
+        if (p < 1) requestAnimationFrame(step);
+        else { if (t.parent) t.parent.removeChild(t); t.destroy(); }
+    };
+    requestAnimationFrame(step);
+}
+
+const ACHV_PER_PAGE = 8;
+let achvPage = 0;
+let achvResetArmed = false;
+
+function totalAchvPages() {
+    return Math.max(1, Math.ceil(CONFIG.achievements.length / ACHV_PER_PAGE));
+}
+
+function buildAchievementsMenu() {
+    achvList = CONFIG.achievements.map(def => {
+        const name = new PIXI.Text('', { fontFamily: 'courier new', fontSize: 22, fill: 0xffffff, fontWeight: 'bold' });
+        name.anchor.set(0.5);
+        const desc = new PIXI.Text(def.desc, { fontFamily: 'courier new', fontSize: 14, fill: 0x999999 });
+        desc.anchor.set(0.5);
+        achvContainer.addChild(name, desc);
+        return { def, name, desc };
+    });
+    updateAchievementsMenu();
+}
+
+function changeAchvPage(delta) {
+    const next = Math.max(0, Math.min(totalAchvPages() - 1, achvPage + delta));
+    if (next === achvPage) return;
+    achvPage = next;
+    updateAchievementsMenu();
+    playConfirm();
+}
+
+function disarmAchvReset() {
+    achvResetArmed = false;
+    achvResetBtn.text = 'Zurücksetzen';
+    achvResetBtn._base = 0xff6666;
+    achvResetBtn.style.fill = 0xff6666;
+}
+
+function onAchvResetClick() {
+    if (!achvResetArmed) {
+        achvResetArmed = true;
+        achvResetBtn.text = 'Sicher? Nochmal';
+        achvResetBtn._base = 0xff2222;
+        achvResetBtn.style.fill = 0xff2222;
+        playConfirm();
+        return;
+    }
+    disarmAchvReset();
+    resetAchievements();
+}
+
+function resetAchievements() {
+    unlockedAchv = {};
+    saveAchievements();
+    achvPage = 0;
+    updateAchievementsMenu();
+    showToast('Erfolge zurückgesetzt');
+    playConfirm();
+}
+
+function updateAchievementsMenu() {
+    const total = CONFIG.achievements.length;
+    const pages = totalAchvPages();
+    achvPage = Math.max(0, Math.min(pages - 1, achvPage));
+    const start = achvPage * ACHV_PER_PAGE;
+
+    achvList.forEach((row, i) => {
+        const idx = start + i;
+        const inPage = i < ACHV_PER_PAGE && idx < total;
+        row.name.visible = inPage;
+        row.desc.visible = inPage;
+        if (!inPage) return;
+        const got = !!unlockedAchv[row.def.id];
+        row.name.text = (got ? '[x] ' : '[ ] ') + row.def.name;
+        row.name.style.fill = got ? 0x66ff99 : 0x888888;
+        row.desc.text = row.def.desc;
+        row.desc.style.fill = got ? 0xbbbbbb : 0x555555;
+    });
+
+    const done = CONFIG.achievements.filter(a => unlockedAchv[a.id]).length;
+    achvSubtitle.text = done + ' / ' + total + ' freigeschaltet';
+    const multi = pages > 1;
+    achvPrevBtn.visible = multi;
+    achvNextBtn.visible = multi;
+    achvPageLabel.visible = multi;
+    achvPageLabel.text = 'Seite ' + (achvPage + 1) + ' / ' + pages;
+    achvPrevBtn._base = achvPage > 0 ? 0x66ccff : 0x445566;
+    achvPrevBtn.style.fill = achvPrevBtn._base;
+    achvNextBtn._base = achvPage < pages - 1 ? 0x66ccff : 0x445566;
+    achvNextBtn.style.fill = achvNextBtn._base;
+}
+
+function openAchievementsMenu() {
+    achvContainer.visible = true;
+    startContainer.visible = false;
+    musicContainer.visible = false;
+    disarmAchvReset();
+    updateAchievementsMenu();
+    playConfirm();
+    layoutUI();
+}
+
+function closeAchievementsMenu() {
+    achvContainer.visible = false;
+    startContainer.visible = true;
+    playConfirm();
+    layoutUI();
+}
+
 function onPlayerHit() {
-    if (arwingInvuln > 0 || gameOver) return;
+    if (devInvincible || arwingInvuln > 0 || invulnMs > 0 || gameOver) return;
 
     if (shieldActive) {
         shieldActive = false;
+        stats.shieldsUsed++;
         arwingInvuln = 800;
         spawnExplosion(arwing.x, arwing.y, 0.1);
         playSound('assets/sounds/explosion1.mp3', 0.5);
@@ -1511,6 +2198,10 @@ function onPlayerHit() {
     }
 
     lives--;
+    stats.hitSinceLevel = true;
+    stats.hitsTaken++;
+    stats.combo = 0;
+    stats.noHitMs = 0;
     updateHud();
     spawnExplosion(arwing.x, arwing.y, 0.12);
     playSound('assets/sounds/explosionMaster.mp3', 0.7);
@@ -1527,6 +2218,8 @@ function onPlayerHit() {
 function gameOverSequence() {
     gameOver = true;
     arwing.visible = false;
+    powerupText.text = '';
+    levelText.visible = false;
     pauseAllMusic();
     gameStartSound.pause();
     playSound('assets/sounds/game_over.mp3', 0.8);
@@ -1562,6 +2255,7 @@ function resetRoundState() {
     destroyAll(laserList);
     destroyAll(enemyLasers);
     destroyAll(powerupList);
+    destroyAll(missileList);
 
     score = 0;
     lives = 3;
@@ -1574,10 +2268,18 @@ function resetRoundState() {
     rapidFireMs = 0;
     spreadShotMs = 0;
     shieldActive = false;
+    slowMs = 0;
+    invulnMs = 0;
+    missileMs = 0;
+    missileCooldown = 0;
     shieldGfx.visible = false;
     fireCooldown = 0;
     fireBlocked = true;
-    powerupTimer = 6000;
+    powerupTimer = CONFIG.tuning.powerupFirstDelayMs;
+
+    currentLevel = Math.max(0, Math.min(LEVELS.length - 1, devLevel));
+    applyLevelVisuals();
+    stats = freshStats();
 
     arwing.visible = true;
     arwing.alpha = 1;
@@ -1697,14 +2399,21 @@ function layoutUI() {
     startDiffRow.y = h * 0.42;
     startButton.x = cx;
     startButton.y = h * 0.545;
-    startMusicBtn.x = cx;
+    startMusicBtn.x = cx - 92;
     startMusicBtn.y = h * 0.64;
+    startAchvBtn.x = cx + 92;
+    startAchvBtn.y = h * 0.64;
     startHint.x = cx;
     startHint.y = h * 0.72;
     startMusicHint.x = cx;
     startMusicHint.y = h * 0.80;
     startScore.x = cx;
     startScore.y = h * 0.875;
+
+    levelText.x = cx;
+    levelText.y = 12;
+    powerupText.x = cx;
+    powerupText.y = 40;
 
     musicTitle.x = cx;
     musicTitle.y = cy - 205;
@@ -1720,6 +2429,64 @@ function layoutUI() {
     musicBackBtn.y = musicStopBtn.y + 58;
     musicBackHint.x = cx;
     musicBackHint.y = musicStopBtn.y + 100;
+
+    achvTitle.x = cx;
+    achvTitle.y = cy - 230;
+    achvSubtitle.x = cx;
+    achvSubtitle.y = cy - 188;
+    achvList.forEach((row, i) => {
+        const slot = i % ACHV_PER_PAGE;
+        const y = cy - 145 + slot * 34;
+        row.name.x = cx;
+        row.name.y = y;
+        row.desc.x = cx;
+        row.desc.y = y + 15;
+    });
+    const achvNavY = cy - 145 + ACHV_PER_PAGE * 34 + 14;
+    achvPrevBtn.x = cx - 110;
+    achvPrevBtn.y = achvNavY;
+    achvNextBtn.x = cx + 110;
+    achvNextBtn.y = achvNavY;
+    achvPageLabel.x = cx;
+    achvPageLabel.y = achvNavY;
+    achvResetBtn.x = cx - 110;
+    achvResetBtn.y = achvNavY + 52;
+    achvBackBtn.x = cx + 110;
+    achvBackBtn.y = achvNavY + 52;
+    achvBackHint.x = cx;
+    achvBackHint.y = achvNavY + 94;
+
+    devTitle.x = cx;
+    devTitle.y = cy - 250;
+    const devStart = cy - 195;
+    devSectorButtons.forEach((b, i) => {
+        b.x = cx;
+        b.y = devStart + i * 34;
+    });
+    const devAfterSectors = devStart + Math.max(1, devSectorButtons.length) * 34;
+    const nPow = devPowerButtons.length;
+    devPowerButtons.forEach((b, i) => {
+        const step = Math.min(96, w * 0.7 / Math.max(1, nPow - 1));
+        b.x = cx + (i - (nPow - 1) / 2) * step;
+        b.y = devAfterSectors + 8;
+    });
+    const devAfterPower = devAfterSectors + 46;
+    devDiffRow.x = cx;
+    devDiffRow.y = devAfterPower + 26;
+    devInvBtn.x = cx;
+    devInvBtn.y = devDiffRow.y + 70;
+    devClearBtn.x = cx - 110;
+    devClearBtn.y = devInvBtn.y + 50;
+    devCloseBtn.x = cx + 110;
+    devCloseBtn.y = devInvBtn.y + 50;
+    devHint.x = cx;
+    devHint.y = devCloseBtn.y + 42;
+
+    startDevBtn.visible = DEV_MODE;
+    if (DEV_MODE) {
+        startDevBtn.x = 60;
+        startDevBtn.y = h - 34;
+    }
 
     pauseTitle.x = cx;
     pauseTitle.y = cy - 190;
@@ -1746,6 +2513,12 @@ function layoutUI() {
     pauseHint.x = cx;
     pauseHint.y = cy + 216;
 
+    pauseDevBtn.visible = DEV_MODE;
+    if (DEV_MODE) {
+        pauseDevBtn.x = 60;
+        pauseDevBtn.y = h - 34;
+    }
+
     gameOverText.x = cx;
     gameOverText.y = cy - 210 * uiScale;
     bestText.x = cx;
@@ -1757,14 +2530,14 @@ function layoutUI() {
     menuButton.x = cx;
     menuButton.y = cy + 240 * uiScale;
 
-    for (const c of [startContainer, musicContainer, pauseContainer]) {
+    for (const c of [startContainer, musicContainer, pauseContainer, achvContainer, devContainer]) {
         c.pivot.set(cx, cy);
         c.position.set(cx, cy);
         c.scale.set(uiScale);
     }
 
     logo.scale.set(0.12 * uiScale);
-    for (const t of [livesText, scoreText, highscoreText, soundButton, gameOverText, bestText, overScoreText, restartButton, menuButton]) {
+    for (const t of [livesText, scoreText, highscoreText, soundButton, levelText, powerupText, gameOverText, bestText, overScoreText, restartButton, menuButton]) {
         t.scale.set(uiScale);
     }
 
@@ -1774,6 +2547,7 @@ function layoutUI() {
 
 function onResize() {
     layoutUI();
+    positionPlanet(false);
     for (const s of stars) {
         if (s.x > app.screen.width) s.x = Math.random() * app.screen.width;
         if (s.y > app.screen.height) s.y = Math.random() * app.screen.height;
@@ -1786,16 +2560,26 @@ function onResize() {
 }
 
 function update(dt) {
+    const tune = CONFIG.tuning;
+    stats.timeMs += dt;
+    stats.noHitMs += dt;
+    if (stats.noHitMs > stats.bestNoHitMs) stats.bestNoHitMs = stats.noHitMs;
+    if (lives === 1) stats.life1Ms += dt;
+
     diffAccum += dt;
-    if (diffAccum >= 1000) {
-        diffAccum -= 1000;
-        if (gameSpeed > 220) gameSpeed -= 12;
+    if (diffAccum >= tune.speedRampStepMs) {
+        diffAccum -= tune.speedRampStepMs;
+        if (gameSpeed > tune.minSpawnMs) gameSpeed = Math.max(tune.minSpawnMs, gameSpeed - tune.speedRampAmount);
     }
 
     if (arwingInvuln > 0) arwingInvuln -= dt;
     if (rapidFireMs > 0) rapidFireMs = Math.max(0, rapidFireMs - dt);
     if (spreadShotMs > 0) spreadShotMs = Math.max(0, spreadShotMs - dt);
-    arwing.alpha = (arwingInvuln > 0 && Math.floor(arwingInvuln / 90) % 2 === 0) ? 0.35 : 1;
+    if (slowMs > 0) slowMs = Math.max(0, slowMs - dt);
+    if (invulnMs > 0) invulnMs = Math.max(0, invulnMs - dt);
+    if (missileMs > 0) missileMs = Math.max(0, missileMs - dt);
+    if (missileCooldown > 0) missileCooldown = Math.max(0, missileCooldown - dt);
+    arwing.alpha = ((arwingInvuln > 0 || invulnMs > 0) && Math.floor((arwingInvuln || invulnMs) / 90) % 2 === 0) ? 0.35 : 1;
 
     if (lives === 1) {
         arwingBlinkT += dt;
@@ -1814,10 +2598,13 @@ function update(dt) {
     updateShips(dt);
     updateLasers(dt);
     updateEnemyLasers(dt);
+    updateMissiles(dt);
     updatePowerups(dt);
 
+    const lvl = LEVELS[currentLevel] || LEVELS[0];
+    const spawnThreshold = Math.max(80, gameSpeed * (lvl.spawnMult || 1));
     spawnAccum += dt;
-    if (spawnAccum >= gameSpeed) {
+    if (spawnAccum >= spawnThreshold) {
         spawnAccum = 0;
         spawnShip();
     }
@@ -1825,8 +2612,12 @@ function update(dt) {
     powerupTimer -= dt;
     if (powerupTimer <= 0) {
         spawnPowerup();
-        powerupTimer = random(8000, 14000);
+        powerupTimer = random(tune.powerupRespawnMinMs, tune.powerupRespawnMaxMs);
     }
+
+    checkLevelAdvance();
+    checkAchievements();
+    updateStatusHud();
 }
 
 function updateShake(dt) {
@@ -1846,9 +2637,30 @@ function updateShieldSprite() {
     shieldGfx.y = arwing.y;
 }
 
+function positionPlanet(reset) {
+    const w = app.screen.width;
+    const h = app.screen.height;
+    const base = Math.min(w, h) * 0.55;
+    bgPlanet.scale.set(base / 200);
+    if (reset) {
+        bgPlanet.x = w * 0.78;
+        bgPlanet.y = h * 0.28;
+    }
+}
+
+function updatePlanet(dt) {
+    bgPlanet.y += 0.02 * dt;
+    const size = 200 * bgPlanet.scale.y;
+    if (bgPlanet.y - size > app.screen.height) {
+        bgPlanet.y = -size;
+        bgPlanet.x = app.screen.width * random(30, 80) / 100;
+    }
+}
+
 app.ticker.add((delta) => {
     const dt = Math.min(delta, 4) * (1000 / 60);
     updateStars(dt);
+    updatePlanet(dt);
     updateShake(dt);
     updateShieldSprite();
     updateMusicFades(dt);
@@ -1857,15 +2669,28 @@ app.ticker.add((delta) => {
     updateWarningSound();
 });
 
-initStars();
-applyDifficulty();
-updateStars(0);
-updateControlButtons();
-updateMusicMenuState();
-refreshHudVisibility();
-layoutUI();
-startMenuMusicNow();
-setTimeout(() => {
-    if (!muted && showStart && !menuMusicUnlocked) startMusicHint.visible = true;
-}, 1000);
-for (const ev of MENU_UNLOCK_EVENTS) document.addEventListener(ev, attemptUnlockMenuMusic);
+async function init() {
+    await loadConfig();
+    applyConfig();
+    LEVELS = CONFIG.levels;
+    boards = loadBoards();
+    unlockedAchv = loadAchievements();
+    buildAchievementsMenu();
+    buildDevMenu();
+    applyLevelVisuals();
+    positionPlanet(true);
+    initStars();
+    applyDifficulty();
+    updateStars(0);
+    updateControlButtons();
+    updateMusicMenuState();
+    refreshHudVisibility();
+    layoutUI();
+    startMenuMusicNow();
+    setTimeout(() => {
+        if (!muted && showStart && !menuMusicUnlocked) startMusicHint.visible = true;
+    }, 1000);
+    for (const ev of MENU_UNLOCK_EVENTS) document.addEventListener(ev, attemptUnlockMenuMusic);
+}
+
+init();

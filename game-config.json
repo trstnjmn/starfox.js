@@ -1,0 +1,81 @@
+{
+  "tuning": {
+    "fireCooldownMs": 165,
+    "rapidFireCooldownMs": 85,
+    "laserSpeed": 0.75,
+    "powerupFirstDelayMs": 6000,
+    "powerupRespawnMinMs": 8000,
+    "powerupRespawnMaxMs": 14000,
+    "speedRampStepMs": 1000,
+    "speedRampAmount": 12,
+    "minSpawnMs": 220
+  },
+  "difficulties": [
+    { "name": "Sehr leicht", "spawnMs": 1600, "maxLives": 8 },
+    { "name": "Leicht", "spawnMs": 1400, "maxLives": 7 },
+    { "name": "Normal", "spawnMs": 1200, "maxLives": 6 },
+    { "name": "Schwer", "spawnMs": 1000, "maxLives": 5 },
+    { "name": "Extrem", "spawnMs": 800, "maxLives": 4 }
+  ],
+  "enemies": {
+    "ship1": { "file": "assets/ship1.png", "damaged": "assets/ship1_damaged.png", "shoots": true, "lateral": true, "hp": 1, "score": 1, "crash": true, "weight": 30 },
+    "ship2": { "file": "assets/ship2.png", "damaged": "assets/ship2_damaged.png", "shoots": true, "lateral": true, "hp": 1, "score": 1, "crash": true, "weight": 30 },
+    "rock": { "file": "assets/rock.png", "hp": 1, "score": 1, "weight": 20 },
+    "satellite": { "file": "assets/satellite.png", "damaged": "assets/satellite_damaged.png", "hp": 1, "score": 1, "orbit": true, "crash": true, "weight": 14 },
+    "bork": { "file": "assets/bork.png", "damaged": "assets/bork_damaged.png", "hp": 2, "score": 2, "blast": true, "weight": 6 }
+  },
+  "powerups": {
+    "weights": { "rapid": 30, "spread": 25, "shield": 20, "life": 12, "slow": 6, "invuln": 4, "missile": 3 },
+    "durationsMs": { "rapid": 8000, "spread": 8000, "slow": 5000, "invuln": 4000, "missile": 8000 },
+    "missileIntervalMs": 420,
+    "slowFactor": 0.45
+  },
+  "levels": [
+    { "id": "orbit", "name": "Orbit", "advanceScore": 0, "spawnMult": 1.0, "speedMult": 1.0, "starTint": "#ffffff", "planetColor": "#3f6d8c" },
+    { "id": "asteroids", "name": "Asteroidenfeld", "advanceScore": 20, "spawnMult": 0.85, "speedMult": 1.05, "starTint": "#ffd9b3", "planetColor": "#8c5a3f" },
+    { "id": "satellites", "name": "Satellitenguertel", "advanceScore": 50, "spawnMult": 0.75, "speedMult": 1.1, "starTint": "#bfe3ff", "planetColor": "#3f8c6d" },
+    { "id": "deepspace", "name": "Tiefraum", "advanceScore": 90, "spawnMult": 0.65, "speedMult": 1.15, "starTint": "#d9c2ff", "planetColor": "#5a3f8c" }
+  ],
+  "achievements": [
+    { "id": "first_blood", "name": "Erster Abschuss", "desc": "Zerstoere den ersten Gegner" },
+    { "id": "first_powerup", "name": "Versorgt", "desc": "Sammle dein erstes Power-up" },
+    { "id": "score_50", "name": "Punktesammler", "desc": "Erreiche 50 Punkte" },
+    { "id": "score_150", "name": "Highscorer", "desc": "Erreiche 150 Punkte" },
+    { "id": "score_300", "name": "Punktejaeger", "desc": "Erreiche 300 Punkte" },
+    { "id": "score_600", "name": "Elite-Pilot", "desc": "Erreiche 600 Punkte" },
+    { "id": "score_1000", "name": "Legende", "desc": "Erreiche 1000 Punkte" },
+    { "id": "kills_10", "name": "Zehn Abschuesse", "desc": "Zerstoere 10 Gegner" },
+    { "id": "kills_25", "name": "Abschussmaschine", "desc": "Zerstoere 25 Gegner" },
+    { "id": "kills_50", "name": "Flottenzerstoerer", "desc": "Zerstoere 50 Gegner" },
+    { "id": "kills_100", "name": "Massenvernichtung", "desc": "Zerstoere 100 Gegner" },
+    { "id": "bork_5", "name": "Bork-Jaeger", "desc": "Zerstoere 5 Borks" },
+    { "id": "bork_15", "name": "Bork-Slayer", "desc": "Zerstoere 15 Borks" },
+    { "id": "bork_30", "name": "Bork-Legende", "desc": "Zerstoere 30 Borks" },
+    { "id": "combo_5", "name": "Serie", "desc": "5 Abschuesse in Folge ohne Treffer" },
+    { "id": "combo_10", "name": "Unaufhaltsam", "desc": "10 Abschuesse in Folge ohne Treffer" },
+    { "id": "combo_20", "name": "Kaum zu stoppen", "desc": "20 Abschuesse in Folge ohne Treffer" },
+    { "id": "shots_100", "name": "Abzugsfreudig", "desc": "Feuere 100 Schuss ab" },
+    { "id": "shots_500", "name": "Dauerfeuer", "desc": "Feuere 500 Schuss ab" },
+    { "id": "shots_1000", "name": "Feuerwerk", "desc": "Feuere 1000 Schuss ab" },
+    { "id": "powerup_10", "name": "Aufgesammelt", "desc": "Sammle 10 Power-ups" },
+    { "id": "powerup_25", "name": "Power-Sammler", "desc": "Sammle 25 Power-ups" },
+    { "id": "powerup_50", "name": "Power-Junkie", "desc": "Sammle 50 Power-ups" },
+    { "id": "all_types", "name": "Bestandsaufnahme", "desc": "Sammle jeden Power-up-Typ" },
+    { "id": "shield_save_1", "name": "Schutzengel", "desc": "Ein Schild faengt einen Treffer ab" },
+    { "id": "shield_save_5", "name": "Schild-Profi", "desc": "Schilde fangen 5 Treffer ab" },
+    { "id": "missile_10", "name": "Raketenphysik", "desc": "Feuere 10 Raketen ab" },
+    { "id": "survive_30_nohit", "name": "Konzentration", "desc": "30s ohne getroffen zu werden" },
+    { "id": "survive_60_nohit", "name": "Unberuehrt", "desc": "60s ohne getroffen zu werden" },
+    { "id": "survivor_60", "name": "Ueberlebenskuenstler", "desc": "Ueberlebe 60 Sekunden" },
+    { "id": "survivor_180", "name": "Durchhaltevermoegen", "desc": "Ueberlebe 180 Sekunden" },
+    { "id": "life1_15", "name": "Letztes Aufgebot", "desc": "Ueberlebe 15s mit nur 1 Leben" },
+    { "id": "tough_3", "name": "Dickes Fell", "desc": "Kassiere 3 Treffer und kaempfe weiter" },
+    { "id": "sector_2", "name": "Entdecker", "desc": "Erreiche Sektor 2" },
+    { "id": "sector_3", "name": "Weltenbummler", "desc": "Erreiche Sektor 3" },
+    { "id": "sector_4", "name": "Tiefraum-Pilot", "desc": "Erreiche Sektor 4" },
+    { "id": "no_hit_sector", "name": "Perfekter Sektor", "desc": "Schliesse einen Sektor ohne Treffer ab" },
+    { "id": "no_hit_sector_3", "name": "Sauberer Flug", "desc": "3 Sektoren ohne Treffer abschliessen" },
+    { "id": "perfect_5", "name": "Makellos", "desc": "5 Sektoren ohne Treffer abschliessen" },
+    { "id": "levels_cleared_3", "name": "Sektor-Sammler", "desc": "Schliesse 3 Sektoren ab" }
+  ]
+}
