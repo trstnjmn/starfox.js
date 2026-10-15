@@ -6,8 +6,8 @@
     "powerupFirstDelayMs": 6000,
     "powerupRespawnMinMs": 4000,
     "powerupRespawnMaxMs": 8000,
-    "speedRampStepMs": 3000,
-    "speedRampAmount": 12,
+    "speedRampStepMs": 4000,
+    "speedRampAmount": 10,
     "minSpawnMs": 220
   },
   "difficulties": [
@@ -46,9 +46,9 @@
   },
   "levels": [
     { "id": "orbit", "name": "Orbit", "advanceScore": 0, "spawnMult": 1.0, "speedMult": 1.0, "starTint": "#ffffff", "planetColor": "#3f6d8c" },
-    { "id": "asteroids", "name": "Asteroidenfeld", "advanceScore": 20, "spawnMult": 0.85, "speedMult": 1.05, "starTint": "#ffd9b3", "planetColor": "#8c5a3f" },
-    { "id": "satellites", "name": "Satellitenguertel", "advanceScore": 50, "spawnMult": 0.75, "speedMult": 1.1, "starTint": "#bfe3ff", "planetColor": "#3f8c6d" },
-    { "id": "deepspace", "name": "Tiefraum", "advanceScore": 90, "spawnMult": 0.65, "speedMult": 1.15, "starTint": "#d9c2ff", "planetColor": "#5a3f8c" }
+    { "id": "asteroids", "name": "Asteroidenfeld", "advanceScore": 50, "spawnMult": 0.85, "speedMult": 1.05, "starTint": "#ffd9b3", "planetColor": "#8c5a3f" },
+    { "id": "satellites", "name": "Satellitenguertel", "advanceScore": 150, "spawnMult": 0.75, "speedMult": 1.1, "starTint": "#bfe3ff", "planetColor": "#3f8c6d" },
+    { "id": "deepspace", "name": "Tiefraum", "advanceScore": 250, "spawnMult": 0.65, "speedMult": 1.15, "starTint": "#d9c2ff", "planetColor": "#5a3f8c" }
   ],
   "achievements": [
     { "id": "first_blood", "name": "Erster Abschuss", "desc": "Zerstoere den ersten Gegner" },
