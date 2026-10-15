@@ -4,9 +4,9 @@
     "rapidFireCooldownMs": 85,
     "laserSpeed": 0.75,
     "powerupFirstDelayMs": 6000,
-    "powerupRespawnMinMs": 8000,
-    "powerupRespawnMaxMs": 14000,
-    "speedRampStepMs": 1000,
+    "powerupRespawnMinMs": 4000,
+    "powerupRespawnMaxMs": 8000,
+    "speedRampStepMs": 3000,
     "speedRampAmount": 12,
     "minSpawnMs": 220
   },
@@ -21,12 +21,26 @@
     "ship1": { "file": "assets/ship1.png", "damaged": "assets/ship1_damaged.png", "shoots": true, "lateral": true, "hp": 1, "score": 1, "crash": true, "weight": 30 },
     "ship2": { "file": "assets/ship2.png", "damaged": "assets/ship2_damaged.png", "shoots": true, "lateral": true, "hp": 1, "score": 1, "crash": true, "weight": 30 },
     "rock": { "file": "assets/rock.png", "hp": 1, "score": 1, "weight": 20 },
-    "satellite": { "file": "assets/satellite.png", "damaged": "assets/satellite_damaged.png", "hp": 1, "score": 1, "orbit": true, "crash": true, "weight": 14 },
-    "bork": { "file": "assets/bork.png", "damaged": "assets/bork_damaged.png", "hp": 2, "score": 2, "blast": true, "weight": 6 }
+    "satellite": { "file": "assets/satellite.png", "damaged": "assets/satellite_damaged.png", "orbit": true, "hp": 1, "score": 1, "crash": true, "weight": 14 },
+    "bork": { "file": "assets/bork.png", "damaged": "assets/bork_damaged.png", "hp": 2, "score": 3, "blast": true, "weight": 6 }
   },
   "powerups": {
-    "weights": { "rapid": 30, "spread": 25, "shield": 20, "life": 12, "slow": 6, "invuln": 4, "missile": 3 },
-    "durationsMs": { "rapid": 8000, "spread": 8000, "slow": 5000, "invuln": 4000, "missile": 8000 },
+    "weights": {
+      "rapid": 30,
+      "spread": 25,
+      "shield": 20,
+      "life": 12,
+      "slow": 6,
+      "invuln": 4,
+      "missile": 3
+    },
+    "durationsMs": {
+      "rapid": 8000,
+      "spread": 8000,
+      "slow": 5000,
+      "invuln": 4000,
+      "missile": 8000
+    },
     "missileIntervalMs": 420,
     "slowFactor": 0.45
   },

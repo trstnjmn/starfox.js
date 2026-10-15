@@ -125,7 +125,7 @@ After changing a cached file, bump `CACHE_NAME` in `service-worker.js` (e.g. `st
 | `app.js` | Main game logic: sprites, spawn logic, input (mouse/keyboard/touch), responsive scaling, sectors, power-ups, achievements, lives, score, audio control. |
 | `gameloop.js` | Timing/helper functions, keyboard input state, and collision helpers. |
 | `styles.css` | Fullscreen layout and retro styles (name-entry overlay, etc.). |
-| `game-config.json` | Tunable game parameters (difficulties, enemies, power-ups, sectors, achievements, pacing). See [Configuration](#configuration). |
+| `game-config.json` | Tunable game parameters (difficulties, enemies, power-ups, sectors, achievements, pacing). See [Configuration](#configuration) and [`CONFIG.md`](CONFIG.md). |
 | `manifest.webmanifest` | Web app manifest (PWA) with name, colors, and icons. |
 | `service-worker.js` | Caches the app shell for offline use and enables installation. |
 | `assets/` | Images, sound effects, background music, and PWA icons (see below). |
@@ -137,18 +137,18 @@ After changing a cached file, bump `CACHE_NAME` in `service-worker.js` (e.g. `st
 
 Most gameplay parameters live in `game-config.json` (loaded at startup and merged over built-in defaults, so a missing/removed key falls back to a sane value). **Editing it requires serving the game over HTTP(S)** — opening `index.html` via `file://` cannot fetch the JSON and will silently use the defaults.
 
+It must be **strict JSON** (no comments, no trailing commas). See [`CONFIG.md`](CONFIG.md) for a per-key reference of every value; all time values are milliseconds.
+
 | Section | What it controls |
 | --- | --- |
 | `tuning` | Fire cooldown (normal/rapid), laser speed, power-up spawn delay/interval, and the difficulty speed ramp. |
 | `difficulties` | The difficulty presets (`name`, `spawnMs`, `maxLives`). Add/remove entries freely; the selector adapts. |
-| `enemies` | Enemy definitions (`file`, `damaged`, `hp`, `score`, `shoots`, `lateral`, `orbit`, `crash`, `blast`) and a spawn `weight`. |
+| `enemies` | Enemy definitions (`file`, `damaged`, `hp`, `score`, `shoots`, `lateral`, `orbit`, `crash`, `blast`) and a relative spawn `weight`. |
 | `powerups` | Spawn `weights` per power-up type, effect `durationsMs`, `missileIntervalMs`, and `slowFactor`. |
 | `levels` | The sectors: `name`, `advanceScore` (score needed to enter), `spawnMult` (spawn interval multiplier, <1 = more enemies), `speedMult`, `starTint`, `planetColor`. |
-| `achievements` | The achievement list (`id`, `name`, `desc`). The unlock logic in `app.js` uses these `id`s. |
+| `achievements` | The achievement list (`id`, `name`, `desc`). The unlock logic in `app.js` (`ACHIEVEMENT_CHECKS`) uses these `id`s. |
 
 **Examples:** make the game harder by lowering `spawnMs`; add a sector by appending to `levels` with a higher `advanceScore`; rebalance power-ups via `powerups.weights`.
-
----
 
 ---
 
